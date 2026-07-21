@@ -9,15 +9,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>ConfigEC — Consultant CRM</title>
 
-    <!-- Theme bootstrap: set data-theme + data-mode on <html> BEFORE styles load
-         so the first paint is themed (no light-flash). theme (in the bundle)
-         reasserts these and wires the auto listener.
-         ── DEMO OVERRIDE ── data-theme is force-pinned to 'fairy'. To restore
-         normal behavior, put the localStorage read back on the `var t=` line. -->
+    <!-- Theme bootstrap: set data-theme (org palette, cached) + data-mode
+         (per-user) on <html> BEFORE styles load so the first paint is themed
+         (no light-flash). theme.ts reasserts these; org settings win. -->
     <script>(function(){try{
       var e=document.documentElement;
-      var t='fairy';                              /* demo — was: localStorage.getItem('crm.theme')||'clinical' */
-      try{localStorage.setItem('crm.theme','fairy');}catch(_){}
+      var t=localStorage.getItem('crm.theme')||'clinical';
+      if(t==='fairy')t='clinical';                /* fairy retired -> clinical */
+      try{localStorage.setItem('crm.theme',t);}catch(_){}
       var m=localStorage.getItem('crm.mode')||'auto';
       var r=(m==='light'||m==='dark')?m:(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
       e.setAttribute('data-theme',t); e.setAttribute('data-mode',r);
@@ -28,13 +27,13 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" />
 
     <!-- Built, content-hashed style bundle (tokens + styles + chatbot + appbuilder). -->
-    <link rel="stylesheet" type="text/css" href="assets/app.200ea97c32.css" />
+    <link rel="stylesheet" type="text/css" href="assets/app.87e443679b.css" />
   </head>
   <body>
     <div id="app"></div>
 
     <!-- Built, content-hashed script bundle: all src/*.ts transpiled and
          concatenated in dependency order (global scope preserved), main last. -->
-    <script src="assets/app.69a858f95a.js"></script>
+    <script src="assets/app.aaa62e7306.js"></script>
   </body>
 </html>

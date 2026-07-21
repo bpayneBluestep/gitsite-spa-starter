@@ -28,8 +28,6 @@ interface ThemeDef {
 }
 
 const THEMES: ThemeDef[] = [
-  { id: 'fairy', label: 'Fairy', description: 'Whimsical + majestic — dreamy lavender, rose-gold, parchment. Demo palette.',
-    swatch: ['oklch(58% .18 305)', 'oklch(98% .012 340)', 'oklch(93% .055 40)'] },
   { id: 'clinical', label: 'Clinical', description: 'Calm, high-legibility blues for regulated clinical work.',
     swatch: ['oklch(52% .12 225)', 'oklch(97% .01 225)', 'oklch(92% .05 225)'] },
   { id: 'modern', label: 'Modern', description: 'Crisp neutrals with a confident violet accent.',
@@ -42,7 +40,7 @@ const THEMES: ThemeDef[] = [
 
 const THEME_STORAGE = 'crm.theme';
 const MODE_STORAGE = 'crm.mode';
-const DEFAULT_THEME = 'fairy';
+const DEFAULT_THEME = 'clinical';
 const DEFAULT_MODE = 'auto'; // 'light' | 'dark' | 'auto'
 
 // Whether a theme id is one we ship (guards stale/garbage values).
