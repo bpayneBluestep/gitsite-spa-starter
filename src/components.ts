@@ -91,7 +91,7 @@ function topbar(): string {
         <div class="tb-menu-head">Display mode</div>
         <div class="tb-mode-seg">${modeBtn('light', 'Light', 'sun')}${modeBtn('dark', 'Dark', 'moon')}${modeBtn('auto', 'Auto', 'laptop')}</div>
         <div class="tb-sep"></div>
-        <a href="/shared/login/logout.jsp">${ic('logout', 15)} Logout</a>
+        <a href="#" onclick="closeAllMenus();logout();return false;">${ic('logout', 15)} Logout</a>
       </div>
     </div>
   </div>`;

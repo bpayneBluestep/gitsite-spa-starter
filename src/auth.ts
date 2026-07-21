@@ -54,6 +54,16 @@ function authMarkLoggedOut(): void {
   if (!AUTH_SUBMITTING && typeof render === 'function') render();
 }
 
+// Log out: invalidate the BlueStep session server-side, then show OUR login
+// gate — no navigation to the platform login page. logout.jsp clears the
+// session cookie same-origin; we ignore its HTML response and just re-render.
+async function logout(): Promise<void> {
+  try {
+    await fetch('/shared/login/logout.jsp', { credentials: 'include', cache: 'no-store' });
+  } catch (_e) { /* even if the call fails, still drop to our gate locally */ }
+  authMarkLoggedOut(); // SESSION -> logged out + render() -> viewLogin
+}
+
 // Quiet splash while the session check is still in flight (SESSION null).
 function viewAuthSplash(): string {
   return `<div class="auth-wrap"><div class="auth-card">
