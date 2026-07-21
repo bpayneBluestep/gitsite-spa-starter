@@ -25,7 +25,7 @@ const assets = join(root, 'assets')
 // Dependency order — mirrors the original merge report's <script> order.
 // main LAST (it boots the router + session load).
 const JS_ORDER = [
-  'icons', 'theme', 'data', 'api', 'components', 'chrome', 'views', 'record',
+  'icons', 'theme', 'data', 'api', 'auth', 'components', 'chrome', 'views', 'record',
   'formedit', 'contacts', 'communications', 'tasks', 'referrals', 'files',
   'programoverlay', 'settings', 'email', 'emailcompose', 'applications',
   'appbuilder', 'clientform', 'agreements', 'agreementbuilder', 'chatbot',

@@ -22,6 +22,22 @@ function closeNav(): void { document.getElementById('app')?.classList.remove('na
 
 function render(): void {
   closeNav(); // any navigation closes the mobile drawer
+
+  // --- auth gate ---
+  // SESSION null = still checking (loadSession re-renders when it resolves) →
+  // show a quiet splash so we don't flash the app + its 403 error states.
+  // loggedIn false = confirmed anonymous → show the login screen.
+  if (SESSION == null) {
+    const a = document.getElementById('app');
+    if (a) a.innerHTML = viewAuthSplash();
+    return;
+  }
+  if (!SESSION.loggedIn) {
+    const a = document.getElementById('app');
+    if (a) a.innerHTML = viewLogin();
+    return;
+  }
+
   const hash = location.hash.replace(/^#/, '') || '/clients';
   const parts = hash.split('/').filter(Boolean); // e.g. ['clients','1000002___1152870','contacts']
   let html: string;

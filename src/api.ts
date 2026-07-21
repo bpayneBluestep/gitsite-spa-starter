@@ -17,6 +17,7 @@ async function maestroPost(action: string, payload: Record<string, unknown>): Pr
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: action, ...payload }),
   });
+  if (res.status === 401) authMarkLoggedOut(); // session expired → show login gate
   let json: any = null;
   try {
     json = await res.json();
@@ -32,6 +33,7 @@ async function maestroPost(action: string, payload: Record<string, unknown>): Pr
 // GET an action from the maestro and return its `data`, or throw.
 async function maestroGet(action: string): Promise<any> {
   const res = await fetch(MAESTRO_URL + '?action=' + encodeURIComponent(action), { headers: { 'Accept': 'application/json' } });
+  if (res.status === 401) authMarkLoggedOut(); // session expired → show login gate
   let json: any = null;
   try {
     json = await res.json();
@@ -55,6 +57,7 @@ async function blueiqPost(action: string, payload: Record<string, unknown>): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: action, ...payload }),
   });
+  if (res.status === 401) authMarkLoggedOut(); // session expired → show login gate
   let json: any = null;
   try {
     json = await res.json();
@@ -132,6 +135,7 @@ async function blueiqAdminPost(action: string, payload: Record<string, unknown>)
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: action, ...payload }),
   });
+  if (res.status === 401) authMarkLoggedOut(); // session expired → show login gate
   let json: any = null;
   try { json = await res.json(); }
   catch (_e) { throw new Error('BlueIQ admin returned a non-JSON response (HTTP ' + res.status + ').'); }
