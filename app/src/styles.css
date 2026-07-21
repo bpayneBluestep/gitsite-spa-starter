@@ -8,6 +8,9 @@
   --muted: #9aa4c0;
   --gold: #f5c451;
   --gold-soft: #ffe6a3;
+  --silver: #c9d2e6;
+  --silver-soft: #eef2fb;
+  --bronze: #c58f5a;
   --border: #232a44;
   --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -362,6 +365,112 @@ code {
   padding: 0.1em 0.4em;
   border-radius: 5px;
   font-size: 0.88em;
+}
+
+/* ---------- Silver variants (Shannon) ---------- */
+.halo--silver {
+  background: radial-gradient(circle, rgba(201, 210, 230, 0.5), rgba(201, 210, 230, 0) 68%);
+}
+
+.avatar--silver {
+  background: radial-gradient(circle at 35% 28%, var(--silver-soft), var(--silver) 70%);
+  box-shadow:
+    0 0 0 6px rgba(201, 210, 230, 0.12),
+    0 0 40px rgba(201, 210, 230, 0.5);
+}
+
+.eyebrow--silver {
+  color: var(--silver);
+}
+
+.title--silver {
+  color: var(--silver);
+}
+
+/* ---------- Divine standings ---------- */
+.standings {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.standing {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+}
+
+.standing--gold {
+  border-left-color: var(--gold);
+}
+.standing--silver {
+  border-left-color: var(--silver);
+}
+.standing--bronze {
+  border-left-color: var(--bronze);
+}
+
+.standing-rank {
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  width: 2rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.standing--gold .standing-rank {
+  color: var(--gold);
+}
+.standing--silver .standing-rank {
+  color: var(--silver);
+}
+.standing--bronze .standing-rank {
+  color: var(--bronze);
+}
+
+.standing-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.standing-name {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.standing-name em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.standing-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-top: 0.15rem;
+}
+
+.commandments--silver li::before {
+  color: var(--silver);
+}
+
+.testimony--silver {
+  border-left-color: var(--silver);
+  max-width: 44rem;
+  margin: 0 auto 1.75rem;
+}
+
+.closing {
+  text-align: center;
 }
 
 @media (max-width: 560px) {

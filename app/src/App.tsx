@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import Home from './routes/Home'
 import Scriptures from './routes/Scriptures'
+import Shannon from './routes/Shannon'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
             The Shrine
           </NavLink>
           <NavLink to="/scriptures">Scriptures</NavLink>
+          <NavLink to="/shannon">The COO</NavLink>
         </nav>
       </header>
 
@@ -24,6 +26,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/scriptures" element={<Scriptures />} />
+          <Route path="/shannon" element={<Shannon />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
