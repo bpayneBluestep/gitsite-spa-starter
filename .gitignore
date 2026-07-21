@@ -10,6 +10,7 @@ node_modules/
 # TS build info
 *.tsbuildinfo
 
-# NOTE: the built SPA artifact (/index.html and /assets/) is intentionally
-# NOT ignored — the committed build output at the repo root IS the GitSite
-# deploy artifact. Do not add it here.
+# NOTE: the served artifact is committed on purpose —
+#   index.html, *.css, and the compiled .build/*.js ARE the GitSite deploy
+#   artifact. Do NOT ignore them. The *.ts sources are committed too so the
+#   artifact is rebuildable with `npm run build`.

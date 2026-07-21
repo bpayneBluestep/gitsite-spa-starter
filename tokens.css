@@ -1,0 +1,376 @@
+/* =====================================================================
+   tokens.css — design tokens + base reset
+   Source of truth: BlueStep One (OKLCH). See 13-design-system.md.
+   ===================================================================== */
+:root{
+  --background:oklch(99% .005 230);
+  --foreground:oklch(18% .02 230);
+  --primary:oklch(52% .12 225);
+  --primary-foreground:oklch(99% .005 230);
+  --secondary:oklch(95% .02 225);
+  --secondary-foreground:oklch(25% .05 225);
+  --accent:oklch(92% .05 225);
+  --accent-foreground:oklch(22% .08 225);
+  --muted:oklch(95% .01 225);
+  --muted-foreground:oklch(45% .02 225);
+  --destructive:oklch(52% .19 25);
+  --destructive-foreground:oklch(99% .005 25);
+  --success:oklch(55% .14 145);
+  --success-bg:oklch(94% .05 145);
+  --warning:oklch(58% .12 85);
+  --warning-bg:oklch(94% .06 85);
+  --border:oklch(90% .01 225);
+  --input:oklch(90% .01 225);
+  --ring:oklch(52% .12 225);
+  --card:oklch(100% 0 0);
+  --sidebar:oklch(97% .01 225);
+  --sidebar-foreground:oklch(22% .03 225);
+  --sidebar-accent:oklch(92% .04 225);
+  --sidebar-accent-foreground:oklch(22% .08 225);
+  --chart-1:oklch(55% .12 225);
+  --chart-2:oklch(62% .1 175);
+  --chart-3:oklch(55% .14 145);
+  --chart-4:oklch(70% .12 85);
+  --chart-5:oklch(60% .15 300);
+  --radius:.5rem;
+  --shadow-sm:0 1px 2px 0 #0000000a;
+  --shadow-md:0 2px 6px -1px #0000000f, 0 1px 3px -1px #0000000a;
+  --shadow-lg:0 8px 20px -4px #00000014, 0 2px 6px -2px #0000000f;
+  --font-sans:Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-display:"Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+
+  /* --- semantic UI tokens that vary by light/dark (see theming section) --- */
+  --scrim:rgba(20,28,36,.45);            /* modal + mobile-nav backdrop */
+  --crop-bg:#0f172a;                     /* photo-cropper stage (dark in both modes) */
+  --crop-ring:rgba(15,23,42,.5);         /* cropper circular mask shadow */
+  --pr-high-bg:#fde8e6; --pr-high-fg:#a12a1c;  /* task priority: High */
+  --pr-med-bg:#fef3d7;  --pr-med-fg:#8a5a00;   /* task priority: Medium */
+  --pr-low-bg:#e7f0e9;  --pr-low-fg:#2f6b45;   /* task priority: Low */
+  --overdue-fg:#a12a1c;                  /* overdue due-date text */
+}
+
+/* =====================================================================
+   THEMING — org-wide color scheme (data-theme) × per-user mode (data-mode).
+   Both attributes live on <html>; a boot script in index.html sets them
+   before first paint. Only COLOR tokens vary here; radius/shadows/fonts
+   stay in :root. Each block redeclares the full color set so the cascade
+   is unambiguous (theme+dark = specificity 0,2,0, always wins).
+
+     :root                              → Clinical  · light  (no-JS fallback)
+     [data-mode="dark"]                 → Clinical  · dark   + shared dark tokens
+     [data-theme="modern"]              → Modern    · light
+     [data-theme="modern"][data-mode…]  → Modern    · dark
+     …warm, slate follow the same pattern.
+   ===================================================================== */
+
+/* ---- Clinical · dark (also carries the shared dark overrides: scrim,
+   priority pills, and stronger shadows used by every dark theme) ---- */
+[data-mode="dark"]{
+  --background:oklch(20% .02 240);
+  --foreground:oklch(95% .01 230);
+  --primary:oklch(62% .14 235);
+  --primary-foreground:oklch(98% .01 230);
+  --secondary:oklch(30% .03 235);
+  --secondary-foreground:oklch(92% .02 230);
+  --accent:oklch(32% .05 235);
+  --accent-foreground:oklch(90% .04 230);
+  --muted:oklch(28% .02 235);
+  --muted-foreground:oklch(68% .02 230);
+  --destructive:oklch(60% .18 25);
+  --destructive-foreground:oklch(98% .01 25);
+  --success:oklch(70% .14 150);
+  --success-bg:oklch(30% .06 150);
+  --warning:oklch(78% .12 85);
+  --warning-bg:oklch(32% .06 80);
+  --border:oklch(32% .02 235);
+  --input:oklch(34% .02 235);
+  --ring:oklch(62% .14 235);
+  --card:oklch(24% .02 240);
+  --sidebar:oklch(18% .02 240);
+  --sidebar-foreground:oklch(88% .02 230);
+  --sidebar-accent:oklch(30% .04 235);
+  --sidebar-accent-foreground:oklch(95% .02 230);
+  --chart-1:oklch(68% .13 235);
+  --chart-2:oklch(72% .1 175);
+  --chart-3:oklch(70% .14 150);
+  --chart-4:oklch(78% .12 85);
+  --chart-5:oklch(72% .15 300);
+  /* shared dark overrides (apply to every dark theme unless re-set) */
+  --scrim:rgba(0,0,0,.6);
+  --pr-high-bg:oklch(30% .08 25);  --pr-high-fg:oklch(80% .12 25);
+  --pr-med-bg:oklch(32% .06 78);   --pr-med-fg:oklch(84% .1 82);
+  --pr-low-bg:oklch(30% .06 150);  --pr-low-fg:oklch(80% .12 150);
+  --overdue-fg:oklch(72% .15 25);
+  --shadow-sm:0 1px 2px 0 #00000040;
+  --shadow-md:0 2px 6px -1px #00000059, 0 1px 3px -1px #00000040;
+  --shadow-lg:0 8px 20px -4px #00000073, 0 2px 6px -2px #00000059;
+}
+
+/* ---- Modern · light (crisp neutrals + violet accent) ---- */
+[data-theme="modern"]{
+  --background:oklch(99% 0 0);
+  --foreground:oklch(20% .01 300);
+  --primary:oklch(55% .2 300);
+  --primary-foreground:oklch(99% 0 0);
+  --secondary:oklch(96% .01 300);
+  --secondary-foreground:oklch(30% .04 300);
+  --accent:oklch(94% .04 300);
+  --accent-foreground:oklch(30% .1 300);
+  --muted:oklch(96% .005 300);
+  --muted-foreground:oklch(50% .02 300);
+  --destructive:oklch(55% .2 25);
+  --destructive-foreground:oklch(99% 0 0);
+  --success:oklch(58% .14 150);
+  --success-bg:oklch(95% .04 150);
+  --warning:oklch(65% .13 82);
+  --warning-bg:oklch(95% .06 85);
+  --border:oklch(92% .005 300);
+  --input:oklch(92% .005 300);
+  --ring:oklch(55% .2 300);
+  --card:oklch(100% 0 0);
+  --sidebar:oklch(97% .005 300);
+  --sidebar-foreground:oklch(28% .02 300);
+  --sidebar-accent:oklch(93% .04 300);
+  --sidebar-accent-foreground:oklch(30% .1 300);
+  --chart-1:oklch(55% .2 300);
+  --chart-2:oklch(60% .15 260);
+  --chart-3:oklch(62% .12 200);
+  --chart-4:oklch(65% .14 340);
+  --chart-5:oklch(58% .16 150);
+}
+[data-theme="modern"][data-mode="dark"]{
+  --background:oklch(18% .01 300);
+  --foreground:oklch(96% .005 300);
+  --primary:oklch(65% .2 300);
+  --primary-foreground:oklch(15% .02 300);
+  --secondary:oklch(28% .03 300);
+  --secondary-foreground:oklch(92% .01 300);
+  --accent:oklch(32% .06 300);
+  --accent-foreground:oklch(90% .06 300);
+  --muted:oklch(26% .02 300);
+  --muted-foreground:oklch(68% .02 300);
+  --destructive:oklch(62% .19 25);
+  --destructive-foreground:oklch(98% .01 25);
+  --success:oklch(70% .14 150);
+  --success-bg:oklch(30% .06 150);
+  --warning:oklch(78% .12 82);
+  --warning-bg:oklch(32% .06 80);
+  --border:oklch(30% .02 300);
+  --input:oklch(32% .02 300);
+  --ring:oklch(65% .2 300);
+  --card:oklch(22% .02 300);
+  --sidebar:oklch(16% .015 300);
+  --sidebar-foreground:oklch(88% .01 300);
+  --sidebar-accent:oklch(30% .05 300);
+  --sidebar-accent-foreground:oklch(94% .04 300);
+  --chart-1:oklch(70% .2 300);
+  --chart-2:oklch(72% .15 260);
+  --chart-3:oklch(74% .12 200);
+  --chart-4:oklch(74% .14 340);
+  --chart-5:oklch(70% .16 150);
+}
+
+/* ---- Warm · light (friendly, residential — terracotta accent) ---- */
+[data-theme="warm"]{
+  --background:oklch(98% .01 80);
+  --foreground:oklch(25% .02 60);
+  --primary:oklch(60% .13 55);
+  --primary-foreground:oklch(99% .01 80);
+  --secondary:oklch(95% .02 70);
+  --secondary-foreground:oklch(30% .04 55);
+  --accent:oklch(92% .05 65);
+  --accent-foreground:oklch(35% .08 50);
+  --muted:oklch(95% .015 70);
+  --muted-foreground:oklch(48% .03 55);
+  --destructive:oklch(55% .18 28);
+  --destructive-foreground:oklch(99% .01 30);
+  --success:oklch(58% .13 140);
+  --success-bg:oklch(94% .05 140);
+  --warning:oklch(65% .13 75);
+  --warning-bg:oklch(94% .07 78);
+  --border:oklch(90% .02 70);
+  --input:oklch(90% .02 70);
+  --ring:oklch(60% .13 55);
+  --card:oklch(99% .008 80);
+  --sidebar:oklch(96% .02 70);
+  --sidebar-foreground:oklch(30% .03 55);
+  --sidebar-accent:oklch(91% .05 65);
+  --sidebar-accent-foreground:oklch(35% .08 50);
+  --chart-1:oklch(60% .13 55);
+  --chart-2:oklch(64% .12 30);
+  --chart-3:oklch(66% .11 95);
+  --chart-4:oklch(58% .12 145);
+  --chart-5:oklch(55% .13 15);
+}
+[data-theme="warm"][data-mode="dark"]{
+  --background:oklch(22% .02 55);
+  --foreground:oklch(94% .02 75);
+  --primary:oklch(68% .14 60);
+  --primary-foreground:oklch(20% .03 55);
+  --secondary:oklch(30% .03 55);
+  --secondary-foreground:oklch(92% .02 70);
+  --accent:oklch(34% .05 55);
+  --accent-foreground:oklch(90% .05 65);
+  --muted:oklch(28% .025 55);
+  --muted-foreground:oklch(70% .03 65);
+  --destructive:oklch(62% .18 28);
+  --destructive-foreground:oklch(98% .01 30);
+  --success:oklch(70% .13 140);
+  --success-bg:oklch(30% .06 140);
+  --warning:oklch(76% .12 78);
+  --warning-bg:oklch(32% .06 78);
+  --border:oklch(32% .025 55);
+  --input:oklch(34% .025 55);
+  --ring:oklch(68% .14 60);
+  --card:oklch(26% .025 55);
+  --sidebar:oklch(19% .02 55);
+  --sidebar-foreground:oklch(88% .02 70);
+  --sidebar-accent:oklch(33% .05 58);
+  --sidebar-accent-foreground:oklch(93% .04 65);
+  --chart-1:oklch(72% .14 60);
+  --chart-2:oklch(74% .12 30);
+  --chart-3:oklch(76% .11 95);
+  --chart-4:oklch(70% .12 145);
+  --chart-5:oklch(68% .13 15);
+}
+
+/* ---- Slate · light (restrained cool neutrals; dark sidebar) ---- */
+[data-theme="slate"]{
+  --background:oklch(98% .003 240);
+  --foreground:oklch(22% .015 240);
+  --primary:oklch(48% .06 235);
+  --primary-foreground:oklch(99% .003 240);
+  --secondary:oklch(95% .005 240);
+  --secondary-foreground:oklch(28% .02 240);
+  --accent:oklch(93% .01 235);
+  --accent-foreground:oklch(28% .03 235);
+  --muted:oklch(95% .004 240);
+  --muted-foreground:oklch(48% .012 240);
+  --destructive:oklch(52% .19 25);
+  --destructive-foreground:oklch(99% .005 25);
+  --success:oklch(55% .12 155);
+  --success-bg:oklch(94% .04 155);
+  --warning:oklch(60% .1 85);
+  --warning-bg:oklch(94% .05 85);
+  --border:oklch(90% .006 240);
+  --input:oklch(90% .006 240);
+  --ring:oklch(48% .06 235);
+  --card:oklch(100% 0 0);
+  --sidebar:oklch(24% .02 240);
+  --sidebar-foreground:oklch(88% .01 240);
+  --sidebar-accent:oklch(32% .03 235);
+  --sidebar-accent-foreground:oklch(96% .006 240);
+  --chart-1:oklch(48% .06 235);
+  --chart-2:oklch(55% .08 200);
+  --chart-3:oklch(58% .1 155);
+  --chart-4:oklch(60% .1 85);
+  --chart-5:oklch(52% .1 280);
+}
+[data-theme="slate"][data-mode="dark"]{
+  --background:oklch(20% .01 240);
+  --foreground:oklch(94% .008 240);
+  --primary:oklch(62% .08 235);
+  --primary-foreground:oklch(16% .015 240);
+  --secondary:oklch(28% .015 240);
+  --secondary-foreground:oklch(92% .01 240);
+  --accent:oklch(30% .02 235);
+  --accent-foreground:oklch(90% .02 235);
+  --muted:oklch(26% .012 240);
+  --muted-foreground:oklch(66% .015 240);
+  --destructive:oklch(60% .18 25);
+  --destructive-foreground:oklch(98% .01 25);
+  --success:oklch(68% .12 155);
+  --success-bg:oklch(28% .05 155);
+  --warning:oklch(74% .1 85);
+  --warning-bg:oklch(30% .05 82);
+  --border:oklch(30% .015 240);
+  --input:oklch(32% .015 240);
+  --ring:oklch(62% .08 235);
+  --card:oklch(24% .012 240);
+  --sidebar:oklch(16% .01 240);
+  --sidebar-foreground:oklch(86% .01 240);
+  --sidebar-accent:oklch(30% .03 235);
+  --sidebar-accent-foreground:oklch(94% .01 240);
+  --chart-1:oklch(66% .08 235);
+  --chart-2:oklch(70% .1 200);
+  --chart-3:oklch(72% .11 155);
+  --chart-4:oklch(74% .1 85);
+  --chart-5:oklch(68% .11 280);
+}
+
+/* ---- Fairy · light (whimsical + majestic — dreamy lavender, rose-gold, parchment) ---- */
+[data-theme="fairy"]{
+  --background:oklch(98% .012 340);
+  --foreground:oklch(22% .06 300);
+  --primary:oklch(58% .18 305);
+  --primary-foreground:oklch(99% .005 340);
+  --secondary:oklch(95% .03 305);
+  --secondary-foreground:oklch(30% .08 300);
+  --accent:oklch(93% .055 40);
+  --accent-foreground:oklch(35% .12 40);
+  --muted:oklch(96% .018 300);
+  --muted-foreground:oklch(50% .04 300);
+  --destructive:oklch(58% .2 15);
+  --destructive-foreground:oklch(99% .005 340);
+  --success:oklch(60% .13 155);
+  --success-bg:oklch(94% .05 155);
+  --warning:oklch(72% .14 85);
+  --warning-bg:oklch(95% .07 82);
+  --border:oklch(90% .025 305);
+  --input:oklch(92% .025 305);
+  --ring:oklch(58% .18 305);
+  --card:oklch(100% 0 0);
+  --sidebar:oklch(96% .028 305);
+  --sidebar-foreground:oklch(28% .08 300);
+  --sidebar-accent:oklch(92% .06 340);
+  --sidebar-accent-foreground:oklch(32% .14 340);
+  --chart-1:oklch(62% .18 305);
+  --chart-2:oklch(70% .14 200);
+  --chart-3:oklch(70% .14 155);
+  --chart-4:oklch(75% .13 60);
+  --chart-5:oklch(64% .17 350);
+}
+[data-theme="fairy"][data-mode="dark"]{
+  --background:oklch(20% .04 285);
+  --foreground:oklch(95% .015 300);
+  --primary:oklch(72% .17 305);
+  --primary-foreground:oklch(15% .04 285);
+  --secondary:oklch(30% .05 295);
+  --secondary-foreground:oklch(93% .02 300);
+  --accent:oklch(35% .08 45);
+  --accent-foreground:oklch(92% .07 60);
+  --muted:oklch(28% .03 290);
+  --muted-foreground:oklch(70% .03 300);
+  --destructive:oklch(65% .19 15);
+  --destructive-foreground:oklch(98% .01 340);
+  --success:oklch(72% .14 155);
+  --success-bg:oklch(30% .06 155);
+  --warning:oklch(80% .13 82);
+  --warning-bg:oklch(32% .06 80);
+  --border:oklch(32% .04 295);
+  --input:oklch(34% .04 295);
+  --ring:oklch(72% .17 305);
+  --card:oklch(24% .045 288);
+  --sidebar:oklch(18% .045 285);
+  --sidebar-foreground:oklch(90% .02 300);
+  --sidebar-accent:oklch(32% .08 335);
+  --sidebar-accent-foreground:oklch(95% .04 340);
+  --chart-1:oklch(75% .17 305);
+  --chart-2:oklch(76% .13 200);
+  --chart-3:oklch(76% .13 155);
+  --chart-4:oklch(80% .13 60);
+  --chart-5:oklch(76% .16 350);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--font-sans); color:var(--foreground);
+  background:var(--background); font-size:16px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+svg{display:block}
+.mono{font-family:var(--font-mono)}

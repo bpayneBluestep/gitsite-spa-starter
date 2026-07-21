@@ -1,26 +1,13 @@
 {
-  "name": "gitsite-spa-starter",
+  "name": "configec-crm-gitsite",
   "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Static SPA starter deployable as a BlueStep GitSite (served under /spa/).",
+  "version": "2.0.0",
+  "description": "ConfigEC Consultant CRM — a global-script SPA served as a BlueStep GitSite under /spa/.",
   "scripts": {
-    "dev": "vite",
-    "build": "node scripts/clean-artifact.mjs && tsc -b && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.0"
+    "clean": "node scripts/clean-artifact.mjs",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@types/node": "^22.10.1",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "esbuild": "^0.24.2"
   }
 }
