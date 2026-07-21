@@ -25,6 +25,8 @@ export default function App() {
 
       <footer className="footer">
         Served under <code>/spa/</code> from a GitHub-backed BlueStep GitSite.
+        <br />
+        Build: <code>{__BUILD_TIME__}</code>
       </footer>
     </div>
   )

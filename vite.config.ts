@@ -15,6 +15,10 @@ export default defineConfig({
   root: 'app',
   base: '/spa/',
   plugins: [react()],
+  // Stamp the build so each deploy is visibly distinct in the UI.
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   build: {
     // Emit the built SPA to the repository root so the zipball root IS the
     // artifact root. `emptyOutDir: false` because outDir is above `root`;
