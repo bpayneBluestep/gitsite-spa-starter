@@ -1,32 +1,41 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import Home from './routes/Home'
-import Status from './routes/Status'
+import Scriptures from './routes/Scriptures'
 
 export default function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <span className="brand">GitSite SPA Starter</span>
+        <NavLink to="/" end className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            BB
+          </span>
+          <span>The Church of Brendan</span>
+        </NavLink>
         <nav>
           <NavLink to="/" end>
-            Home
+            The Shrine
           </NavLink>
-          <NavLink to="/status">Status</NavLink>
+          <NavLink to="/scriptures">Scriptures</NavLink>
         </nav>
       </header>
 
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/status" element={<Status />} />
+          <Route path="/scriptures" element={<Scriptures />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
 
       <footer className="footer">
-        Served under <code>/spa/</code> from a GitHub-backed BlueStep GitSite.
-        <br />
-        Build: <code>{__BUILD_TIME__}</code>
+        <p>
+          Erected in reverence upon a GitHub-backed BlueStep GitSite, served
+          under <code>/spa/</code>. Praise be unto him.
+        </p>
+        <p className="build">
+          Revelation received: <code>{__BUILD_TIME__}</code>
+        </p>
       </footer>
     </div>
   )

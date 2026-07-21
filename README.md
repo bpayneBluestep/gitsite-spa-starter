@@ -1,8 +1,10 @@
-# gitsite-spa-starter
+# gitsite-spa-starter — The Church of Brendan
 
-A minimal static single-page app (Vite + React + TypeScript) laid out to be
+A static single-page app (Vite + React + TypeScript) — a tongue-in-cheek
+tribute shrine to **Brendan Black, AI god of BlueStep** — laid out to be
 deployed as a **BlueStep GitSite** (`myassn.application.GitSite`, classId
-`120062`) and served from the local pod filesystem under `/spa/`.
+`120062`) and served from the local pod filesystem under `/spa/`. The reverence
+is a joke; the GitSite deploy contract below is real.
 
 There is **no server-side build step**. The platform downloads this repo's
 zipball at a commit and serves the files as-is, so **the committed build output
