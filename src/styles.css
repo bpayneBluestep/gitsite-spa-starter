@@ -1178,3 +1178,15 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .auth-title{font-family:var(--font-display);font-size:1.7rem;font-weight:600;margin:0 0 8px;color:var(--foreground)}
 .auth-sub{color:var(--muted-foreground);font-size:.95rem;line-height:1.5;margin:0 0 24px}
 .auth-btn{width:100%;height:40px;justify-content:center;font-size:1rem}
+
+/* ---- login form fields (auth.ts) ---- */
+.auth-field{text-align:left;margin-bottom:14px}
+.auth-field label{display:block;font-size:.8rem;font-weight:500;color:var(--muted-foreground);margin:0 0 6px}
+.auth-input{width:100%;height:40px;padding:0 12px;border:1px solid var(--input);border-radius:var(--radius);
+  background:var(--card);color:var(--foreground);font-family:inherit;font-size:1rem;outline:none}
+.auth-input:focus{border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklch,var(--ring) 25%,transparent)}
+.auth-error{color:var(--destructive);font-size:.88rem;margin:0 0 14px;text-align:left}
+.auth-sso{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.auth-trouble{margin-top:16px;background:none;border:0;color:var(--muted-foreground);
+  font-size:.82rem;text-decoration:underline;width:100%;cursor:pointer}
+.auth-trouble:hover{color:var(--foreground)}

@@ -548,6 +548,75 @@ function apiSession(): Promise<Session> {
   return maestroGet('session');
 }
 
+/* ---- in-app login (POST credentials to the tenant login handler) ----
+   BlueStep login is a WebView FORM post (application/x-www-form-urlencoded),
+   not a JSON API. We post same-origin so the session cookie is authenticated
+   on THIS host, then re-probe /session to confirm. No CSRF token is required:
+   the login post isn't gated by the header-based Csrf servlet and login.jsp
+   renders no token field (Bluestep-Systems/web@master, verified).
+   The password only ever goes to this same-origin BlueStep tenant host. */
+const LOGIN_URL = '/shared/login/login.jsp';
+
+function loginFormBody(username: string, password: string): URLSearchParams {
+  const b = new URLSearchParams();
+  b.set('_postEvent', 'commit');
+  b.set('_postFormClass', 'myassn.user.UserLoginWebView');
+  b.set('step', 'two'); // != "one" -> doLogin() runs now (skip the step-1 round-trip)
+  b.set('myUserName', username);
+  b.set('myPassword', password);
+  b.set('rememberMe', 'false');
+  return b;
+}
+
+// Try an in-app password login. Resolves to:
+//   { ok:true }                  — session is now authenticated
+//   { ok:false, twoFactor:true } — global-user email 2FA; caller hands off
+//   { ok:false, error }          — bad credentials / locked / needs captcha
+async function login(username: string, password: string): Promise<{ ok: boolean; twoFactor?: boolean; error?: string }> {
+  // Intentionally NO desturl: on success doLogin() returns null and just
+  // re-renders login.jsp (200); we confirm success by re-probing /session,
+  // not by following a redirect or parsing HTML.
+  let res: Response;
+  try {
+    res = await fetch(LOGIN_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: loginFormBody(username, password).toString(),
+    });
+  } catch (_e) {
+    return { ok: false, error: 'Could not reach the sign-in service. Check your connection and try again.' };
+  }
+  // Global users are bounced to email 2FA (doLogin 302s to the verify page).
+  if (res.redirected && /\/oauth2\/v1\/login\/verify/.test(res.url)) {
+    return { ok: false, twoFactor: true };
+  }
+  // Authoritative check: did the session actually become authenticated?
+  let sess: Session | null = null;
+  try { sess = await apiSession(); } catch (_e) { sess = null; }
+  if (sess && sess.loggedIn) { SESSION = sess; return { ok: true }; }
+  return { ok: false, error: 'The username or password you entered is invalid.' };
+}
+
+// Full-page native POST to the login handler with a desturl back into the SPA.
+// Used for paths an in-app fetch can't finish (global-user email 2FA): the
+// platform renders its own verify page, then returns us to `dest`.
+function nativeLoginSubmit(username: string, password: string, dest: string): void {
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = LOGIN_URL + '?desturl=' + encodeURIComponent(dest);
+  f.style.display = 'none';
+  const add = (n: string, v: string) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; f.appendChild(i); };
+  add('_postEvent', 'commit');
+  add('_postFormClass', 'myassn.user.UserLoginWebView');
+  add('step', 'two');
+  add('myUserName', username);
+  add('myPassword', password);
+  add('rememberMe', 'false');
+  document.body.appendChild(f);
+  f.submit();
+}
+
 /* ---- live client store (single source for the list + record view) ---- */
 let CLIENT_STORE: Client[] | null = null;   // null = not loaded yet
 let CLIENTS_LOADING = false;
