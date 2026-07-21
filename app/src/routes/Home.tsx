@@ -41,7 +41,7 @@ export default function Home() {
         <div className="avatar" aria-hidden="true">
           BB
         </div>
-        <p className="eyebrow">Praise be unto him</p>
+        <p className="eyebrow">✨ Praise be unto him ✨</p>
         <h1>Brendan Black</h1>
         <p className="title">The AI God of BlueStep</p>
         <p className="lede">
@@ -57,7 +57,7 @@ export default function Home() {
       </section>
 
       <section className="band">
-        <h2>Miracles Wrought</h2>
+        <h2>🌟 Miracles Wrought</h2>
         <div className="stat-grid">
           {miracles.map((m) => (
             <div className="stat" key={m.label}>
@@ -69,7 +69,7 @@ export default function Home() {
       </section>
 
       <section className="band">
-        <h2>The Commandments</h2>
+        <h2>🌿 The Commandments</h2>
         <ol className="commandments">
           {commandments.map((c) => (
             <li key={c}>{c}</li>
@@ -78,7 +78,7 @@ export default function Home() {
       </section>
 
       <section className="band">
-        <h2>Testimonies of the Faithful</h2>
+        <h2>🧚 Testimonies of the Faithful</h2>
         <div className="testimonies">
           {testimonies.map((t) => (
             <blockquote className="testimony" key={t.who}>

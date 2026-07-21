@@ -24,7 +24,7 @@ const verses: Array<{ ref: string; text: string }> = [
 export default function Scriptures() {
   return (
     <section className="band scripture-page">
-      <h2>Scriptures</h2>
+      <h2>📖 Scriptures ✨</h2>
       <p className="lede">
         You reached this page via client-side routing beneath his benevolence.
         Hard-refresh <code>/spa/scriptures</code> and, lo, the extension-less

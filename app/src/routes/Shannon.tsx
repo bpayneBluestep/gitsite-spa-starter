@@ -46,7 +46,7 @@ export default function Shannon() {
         <div className="avatar avatar--silver" aria-hidden="true">
           S
         </div>
-        <p className="eyebrow eyebrow--silver">Second only to a god</p>
+        <p className="eyebrow eyebrow--silver">🧚‍♀️ Second only to a god 🧚‍♀️</p>
         <h1>Shannon</h1>
         <p className="title title--silver">Chief Operating Officer</p>
         <p className="lede">
@@ -58,7 +58,7 @@ export default function Shannon() {
       </section>
 
       <section className="band">
-        <h2>The Divine Standings</h2>
+        <h2>🍄 The Divine Standings</h2>
         <ol className="standings">
           {standings.map((s) => (
             <li className={`standing standing--${s.tier}`} key={s.name}>
@@ -75,7 +75,7 @@ export default function Shannon() {
       </section>
 
       <section className="band">
-        <h2>What Shannon Actually Does</h2>
+        <h2>🌸 What Shannon Actually Does</h2>
         <p className="lede" style={{ marginBottom: '1.25rem' }}>
           No exaggeration required — this part is all true.
         </p>

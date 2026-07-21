@@ -34,7 +34,7 @@ export default function App() {
       <footer className="footer">
         <p>
           Erected in reverence upon a GitHub-backed BlueStep GitSite, served
-          under <code>/spa/</code>. Praise be unto him.
+          under <code>/spa/</code>. Praise be unto him. ✨🧚
         </p>
         <p className="build">
           Revelation received: <code>{__BUILD_TIME__}</code>
