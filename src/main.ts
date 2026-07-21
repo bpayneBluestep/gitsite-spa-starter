@@ -28,15 +28,19 @@ function render(): void {
   // show a quiet splash so we don't flash the app + its 403 error states.
   // loggedIn false = confirmed anonymous → show the login screen.
   if (SESSION == null) {
+    if (typeof biqTeardown === 'function') biqTeardown();
     const a = document.getElementById('app');
     if (a) a.innerHTML = viewAuthSplash();
     return;
   }
   if (!SESSION.loggedIn) {
+    if (typeof biqTeardown === 'function') biqTeardown();
     const a = document.getElementById('app');
     if (a) a.innerHTML = viewLogin();
     return;
   }
+  // Signed in — mount the BlueIQ assistant if the user's seat allows it.
+  if (typeof biqInit === 'function') biqInit();
 
   const hash = location.hash.replace(/^#/, '') || '/clients';
   const parts = hash.split('/').filter(Boolean); // e.g. ['clients','1000002___1152870','contacts']

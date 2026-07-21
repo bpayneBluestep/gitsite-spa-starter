@@ -980,6 +980,11 @@ function biqCapHtml(): string {
 // product (the endpoint already reports enabled:true for gate hiccups).
 async function biqInit(): Promise<void> {
   if (document.getElementById('__biq-root')) return;
+  // Never on the splash/login gate — the assistant is a signed-in-only surface.
+  // SESSION is null while the session check is in flight and { loggedIn:false }
+  // when anonymous; either way we don't mount. render() calls us again once the
+  // user is authenticated.
+  if (!(typeof SESSION !== 'undefined' && SESSION && SESSION.loggedIn)) return;
   let show = true;
   try {
     const status = await apiBlueiqStatus();
@@ -994,6 +999,13 @@ async function biqInit(): Promise<void> {
   // Navigating between routes changes scope — refresh the chip if open, and
   // reset a manual broaden so each page starts at its natural scope.
   window.addEventListener('hashchange', () => { BIQ_FORCE_GLOBAL = false; if (BIQ_OPEN) biqRender(); });
+}
+
+// Remove the persistent assistant root (on logout / when the gate reappears).
+function biqTeardown(): void {
+  const r = document.getElementById('__biq-root');
+  if (r) r.remove();
+  BIQ_OPEN = false;
 }
 
 if (document.readyState !== 'loading') biqInit();
