@@ -11,6 +11,5 @@ node_modules/
 *.tsbuildinfo
 
 # NOTE: the served artifact is committed on purpose —
-#   index.html, *.css, and the compiled .build/*.js ARE the GitSite deploy
-#   artifact. Do NOT ignore them. The *.ts sources are committed too so the
-#   artifact is rebuildable with `npm run build`.
+#   index.html + assets/app.<hash>.{js,css} ARE the GitSite deploy artifact,
+#   built from src/ by `npm run build`. Do NOT ignore them.

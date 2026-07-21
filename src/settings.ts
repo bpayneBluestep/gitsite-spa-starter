@@ -648,7 +648,7 @@ function biqRowHtml(u: BiqUserRow): string {
   const dis = u.enabled ? '' : 'disabled';
   return `<tr data-uid="${esc(u.userId)}">
     <td><div class="biq-u-name">${esc(u.name || u.userId)}</div>${u.email ? `<div class="biq-u-email muted">${esc(u.email)}</div>` : ''}</td>
-    <td><input type="checkbox" class="biq-en" ${u.enabled ? 'checked' : ''} onchange="biqToggle('${esc(u.userId)}', this.checked)"></td>
+    <td><input type="checkbox" class="biq-en" ${u.enabled ? 'checked' : ''} onchange="biqToggleSeat('${esc(u.userId)}', this.checked)"></td>
     <td><input class="biq-credits" type="number" min="0" step="100" value="${esc(creditsVal)}" placeholder="${BIQ_ADMIN.defaultCredits}" ${dis} onchange="biqSetLimit('${esc(u.userId)}', this.value)"></td>
     <td><select class="biq-role" ${dis} onchange="biqSetRole('${esc(u.userId)}', this.value)">
       <option value="member" ${u.role === 'admin' ? '' : 'selected'}>Member</option>
@@ -663,7 +663,7 @@ function biqRow(userId: string): BiqUserRow | null {
   return m.length ? m[0] : null;
 }
 
-async function biqToggle(userId: string, enabled: boolean): Promise<void> {
+async function biqToggleSeat(userId: string, enabled: boolean): Promise<void> {
   const u = biqRow(userId);
   try {
     const payload: Record<string, unknown> = { userId: userId, enabled: enabled };

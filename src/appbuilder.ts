@@ -921,7 +921,7 @@ function builderOpenLogic(): void {
       let cond = '';
       if (src && src.type === 'boolean') {
         const m = vis.match.boolean || { true: false, false: false };
-        const parts = []; if (m.true) parts.push('Yes'); if (m.false) parts.push('No');
+        const parts: string[] = []; if (m.true) parts.push('Yes'); if (m.false) parts.push('No');
         cond = (src.label || '(untitled)') + ' = ' + (parts.join(' or ') || '(none)');
       } else if (src) {
         const chosen = vis.match.optionIds || [];

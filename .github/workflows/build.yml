@@ -1,0 +1,38 @@
+name: build
+
+# Quality gate: type-check the SPA and prove the committed artifact is exactly
+# what `npm run build` produces from src/. Fails if types break or if someone
+# pushed source without rebuilding (stale index.html / assets).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify committed artifact is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- index.html assets)" ]; then
+            echo "::error::Committed artifact is stale. Run 'npm run build' and commit index.html + assets/."
+            git --no-pager diff --stat -- index.html assets
+            exit 1
+          fi
+          echo "Artifact is up to date."
