@@ -49,12 +49,10 @@ function render(): void {
   else if (parts[0] === 'email') html = viewMyEmail();
   else if (parts[0] === 'settings') html = viewSettings(parts[1]);
   else if (parts[0] === 'dashboard') html = viewDashboard();
-  else if (parts[0] === 'pdflab') html = viewPdfLab();
   else if (parts[0] === 'agreementbuilder') html = viewAgreementBuilder();
   else html = viewClients();
   const app = document.getElementById('app');
   if (app) app.innerHTML = html;
-  if (parts[0] === 'pdflab') pdfLabInit(); // canvas needs a live DOM
   const main = document.querySelector('.main');
   if (main) main.scrollTo(0, 0);
 }

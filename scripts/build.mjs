@@ -29,7 +29,7 @@ const JS_ORDER = [
   'formedit', 'contacts', 'communications', 'tasks', 'referrals', 'files',
   'programoverlay', 'settings', 'email', 'emailcompose', 'applications',
   'appbuilder', 'clientform', 'agreements', 'agreementbuilder', 'chatbot',
-  'pdflab', 'main',
+  'main',
 ]
 const CSS_ORDER = ['tokens', 'styles', 'chatbot', 'appbuilder']
 

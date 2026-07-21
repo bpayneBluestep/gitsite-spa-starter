@@ -20,30 +20,10 @@
                       target THIS page on whatever org the CRM is deployed to
    The two org-specific home ids (Organization Admin, Relate) come from this
    org's chrome — refresh them if the CRM is deployed to another org. */
-// The native composite-page chrome renders "Content Edit Mode" / "Edit Page"
-// image buttons in a table above our #app mount. We hide that table (see
-// styles.css) and surface the same links here. Read the real hrefs off those
-// anchors when present; otherwise build them from the current page id.
-function editLinks(): { mode: string; page: string } {
-  const pid = String((window as any).curPagePrimaryObject || '');
-  const grab = (needle: string, fallback: string): string => {
-    const img = document.querySelector('#contentArea a img[src*="' + needle + '"]') as HTMLImageElement | null;
-    const a = img ? img.closest('a') : null;
-    const href = a ? a.getAttribute('href') : null;
-    return href || fallback;
-  };
-  return {
-    mode: grab('btn_editmode', '/shared/layouts/singleblock.jsp?_event=view&_id=' + pid + '&_canChange=true'),
-    page: grab('btn_editpage', '/shared/admin/sites/editcontentpage.jsp?_event=edit&_id=' + pid),
-  };
-}
-
 function toolsMenu(): string {
   const pid = String((window as any).curPagePrimaryObject || '');
   const link = (label: string, href: string) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
-  const linkSelf = (label: string, href: string) => `<a href="${esc(href)}">${esc(label)}</a>`;
   const js = (label: string, code: string) => `<a href="#" onclick="${esc(code)};return false;">${esc(label)}</a>`;
-  const el = editLinks();
   const items = [
     link('Organization Admin', '/shared/home.jsp?_a=111020___151457'),
     js('Organization Chart', "doPopupFrame('Organization Chart',APP_ROOT+'/shared/admin/organization/orgpop.jsp',APP_ROOT+'/shared/admin/organization/orgbottom.jsp',FRAME_VIEW,true)"),
@@ -57,20 +37,11 @@ function toolsMenu(): string {
     link('Cache Stats', '/admin/cachestatsnew.jsp'),
     js('Temporary Login', "doPopup('/shared/login/templogin.jsp', winAttribs(550,400,0,0,1), true)"),
   ].join('');
-  // "Page" section — the edit buttons we hid from the composite-page chrome.
-  const pageItems = `<div class="tb-sep"></div><div class="tb-menu-head">Page</div>
-    ${linkSelf('Content Edit Mode', el.mode)}
-    ${linkSelf('Edit Page', el.page)}`;
-  // Dev/spike section (this menu is already super-only) — throwaway feasibility tools.
-  const devItems = `<div class="tb-sep"></div><div class="tb-menu-head">Dev</div>
-    ${linkSelf('PDF Lab (spike)', '#/pdflab')}`;
   return `<div class="tb-dd">
     <button class="tb-btn" onclick="toggleMenu(event,'tbTools')" title="Tools">${ic('wrench', 16)}<span class="hide-sm">Tools</span> ${ic('chevD', 13)}</button>
     <div class="tb-menu tb-right" id="tbTools">
       <div class="tb-menu-head">Admin Tools</div>
       ${items}
-      ${devItems}
-      ${pageItems}
     </div>
   </div>`;
 }
