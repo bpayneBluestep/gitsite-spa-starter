@@ -435,7 +435,10 @@ function appInterpreterUrl(): string {
 
    settings.agreements.signUrl is still honoured server-side as an override for any org
    deliberately pinned elsewhere; there is just no UI to set one. */
-function agreementSignUrl(): string {
+// Any legacy settings.agreements.signUrl left over from the satellite era. The server
+// no longer honours it — surfaced only so a stale value is visible rather than a
+// silent mystery.
+function agreementLegacySignUrl(): string {
   const s: any = SETTINGS;
   return s && s.agreements && typeof s.agreements.signUrl === 'string' ? s.agreements.signUrl : '';
 }
@@ -448,16 +451,19 @@ function agreementResolvedSignUrl(): string {
 
 function agreementsSettingsPanel(): string {
   if (!SETTINGS && !SETTINGS_LOADING) loadSettings();
-  const override = agreementSignUrl();
   const resolved = agreementResolvedSignUrl();
-  const effective = override || resolved;
+  const legacy = agreementLegacySignUrl();
 
-  const state = effective
+  const state = resolved
     ? `<span class="pill success">Automatic</span>`
     : `<span class="pill warning">No domain resolved — signing links won't generate</span>`;
 
-  const overrideNote = override
-    ? `<div class="pab-hint" style="margin-top:8px">An explicit <code>agreements.signUrl</code> override is set for this org, so it is used instead of the automatic address above.</div>`
+  // A leftover satellite URL is inert now, but say so plainly: it is exactly the kind
+  // of invisible stored value that sends parents to a retired page.
+  const legacyNote = legacy
+    ? `<div class="pab-hint" style="margin-top:10px"><b>Ignored:</b> this org still stores an old
+         <code>agreements.signUrl</code> of <code>${esc(legacy)}</code> from the satellite-site era.
+         It is no longer used and can be left alone.</div>`
     : '';
 
   return `<div class="section-head">
@@ -473,9 +479,9 @@ function agreementsSettingsPanel(): string {
     </div>
     <div class="card" style="margin-top:14px;padding:18px 20px">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">Signing page ${state}</label>
-      <div class="agr-signurl">${effective ? esc(effective) : '—'}</div>
+      <div class="agr-signurl">${resolved ? esc(resolved) : '—'}</div>
       <div class="pab-hint">Signers receive this address with their own entity, client, log &amp; token parameters appended. It follows this organization's Default Domain automatically — nothing to configure, and a copy of this org for another client picks up that client's domain.</div>
-      ${overrideNote}
+      ${legacyNote}
     </div>`;
 }
 
