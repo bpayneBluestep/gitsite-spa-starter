@@ -294,26 +294,37 @@ function apiSetAgreementTemplateStatus(entryId: string, status: string): Promise
   return maestroPost('setAgreementTemplateStatus', { entryId: entryId, status: status });
 }
 
-/* ---- agreement instances (per-client "agreements" MEF) ---- */
+/* ---- agreement instances (per-client "agreements" MEF) ----
+
+   Every call carries `entity` ('client' | 'inquiry' | 'alumni'). The maestro defaults
+   it to 'client' and its findById falls back across the sibling person queries, so
+   omitting it still WORKS on the consultant side — but sendAgreement bakes whatever
+   entity it was given into the parent's signing link, and a lead (Inquiry-only record)
+   labelled 'client' produced a link the signing endpoint could not resolve. Pass the
+   real one. */
+function agrEntity(clientId: string): string {
+  const c = typeof findClient === 'function' ? findClient(clientId) : undefined;
+  return (c && c.entity) ? c.entity : 'client';
+}
 function apiListAgreements(clientId: string): Promise<any[]> {
-  return maestroPost('listAgreements', { id: clientId });
+  return maestroPost('listAgreements', { id: clientId, entity: agrEntity(clientId) });
 }
 function apiGetAgreement(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('getAgreement', { id: clientId, entryId: entryId });
+  return maestroPost('getAgreement', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
 }
 function apiCreateAgreement(clientId: string, templateRef: string, title: string, signers: any[]): Promise<any> {
-  return maestroPost('createAgreement', { id: clientId, templateRef: templateRef, title: title, signers: signers });
+  return maestroPost('createAgreement', { id: clientId, templateRef: templateRef, title: title, signers: signers, entity: agrEntity(clientId) });
 }
 function apiSendAgreement(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('sendAgreement', { id: clientId, entryId: entryId });
+  return maestroPost('sendAgreement', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
 }
 function apiVoidAgreement(clientId: string, entryId: string, reason: string): Promise<any> {
-  return maestroPost('voidAgreement', { id: clientId, entryId: entryId, reason: reason });
+  return maestroPost('voidAgreement', { id: clientId, entryId: entryId, reason: reason, entity: agrEntity(clientId) });
 }
 // fieldValues carries whatever {{initials:…}} / {{text:…:Label}} tokens the template
 // addressed to the consultant's role; {} when it addressed none.
 function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string, fieldValues?: Record<string, string>): Promise<any> {
-  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {} });
+  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {}, entity: agrEntity(clientId) });
 }
 // Generate-or-serve the signed PDF on demand (PDF generation is off the signing
 // path — it lives here, retryable, so a momentary converter hang never blocks signing).
@@ -321,7 +332,7 @@ function apiCountersignAgreement(clientId: string, entryId: string, signatureDat
 // doesn't. Called as a fire-and-forget kick right after a countersign completes an
 // agreement, and again from the manual "PDF generating…" retry button.
 function apiGetSignedPdf(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('getSignedPdf', { id: clientId, entryId: entryId });
+  return maestroPost('getSignedPdf', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
 }
 
 /* ---- program overlay (Directory Layer 2: consultant-private data on a program) ----
