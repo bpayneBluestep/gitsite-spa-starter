@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Served under the GitSite /spa/ prefix, same as index.html. Asset refs are
+         relative and resolve under /spa/; the /b/agreementSign fetches are
+         root-absolute and unaffected by base. -->
+    <base href="/spa/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Sign Agreement</title>
+
+    <!-- No theme bootstrap: the signer is not a CRM user and has no stored
+         preference. The page is deliberately light-only and self-contained so it
+         renders identically for every recipient, on any device, first paint. -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" />
+
+    <link rel="stylesheet" type="text/css" href="__CSS__" />
+  </head>
+  <body>
+    <div id="sign-root"></div>
+    <script src="__JS__"></script>
+  </body>
+</html>

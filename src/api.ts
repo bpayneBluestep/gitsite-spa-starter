@@ -310,11 +310,16 @@ function apiSendAgreement(clientId: string, entryId: string): Promise<any> {
 function apiVoidAgreement(clientId: string, entryId: string, reason: string): Promise<any> {
   return maestroPost('voidAgreement', { id: clientId, entryId: entryId, reason: reason });
 }
-function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string): Promise<any> {
-  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData });
+// fieldValues carries whatever {{initials:…}} / {{text:…:Label}} tokens the template
+// addressed to the consultant's role; {} when it addressed none.
+function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string, fieldValues?: Record<string, string>): Promise<any> {
+  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {} });
 }
 // Generate-or-serve the signed PDF on demand (PDF generation is off the signing
 // path — it lives here, retryable, so a momentary converter hang never blocks signing).
+// Idempotent: serves the cached Files copy when one exists, renders only when it
+// doesn't. Called as a fire-and-forget kick right after a countersign completes an
+// agreement, and again from the manual "PDF generating…" retry button.
 function apiGetSignedPdf(clientId: string, entryId: string): Promise<any> {
   return maestroPost('getSignedPdf', { id: clientId, entryId: entryId });
 }
