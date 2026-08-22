@@ -91,6 +91,7 @@
       contentHtml: String((STATE.doc && STATE.doc.contentHtml) || ''),
       merge: STATE.merge,
       signers: STATE.signers,
+      fieldDefs: (STATE.doc && (STATE.doc as any).fields) || [],
       myRole: STATE.signer ? String(STATE.signer.role || '') : '',
     });
     STATE.fields = body.fields;
@@ -103,12 +104,8 @@
       + '<h1>' + sigEsc(STATE.title) + '</h1>'
       + '<p class="sg-hi">' + (who ? 'Please review and sign, ' + sigEsc(who) + '.' : 'Please review and sign.') + '</p>'
       + '</div>'
-      + '<div class="sg-doc">' + body.html + '</div>'
-      + sigFieldsHtml(body.fields)
+      + '<div class="sg-doc" id="sg-doc">' + body.html + '</div>'
       + '<div class="sg-sign">'
-      + '<h3>Your signature</h3>'
-      + '<canvas id="sg-pad" class="sg-pad"></canvas>'
-      + '<div class="sg-pad-actions"><button type="button" class="sg-btn-ghost" id="sg-clear">Clear</button></div>'
       + '<label class="sg-consent"><input type="checkbox" id="sg-consent"> I agree to sign this document electronically, and that my electronic signature is legally binding.</label>'
       + '<div class="sg-err" id="sg-err" hidden></div>'
       + '<div class="sg-actions">'
@@ -117,10 +114,33 @@
       + '</div></div></div>'
     );
 
-    if (pad) pad.destroy();
-    pad = sigSetupPad(document.getElementById('sg-pad') as HTMLCanvasElement | null);
+    // Adopting a signature repaints the document in place, turning the yellow box
+    // into the signature itself. Anything already typed inline is preserved.
+    sigOnChange(function () {
+      var doc = document.getElementById('sg-doc');
+      if (!doc) return;
+      var keep = sigCollectFields(doc);
+      doc.innerHTML = sigRenderBody({
+        contentHtml: String((STATE.doc && STATE.doc.contentHtml) || ''),
+        merge: STATE.merge,
+        signers: STATE.signers,
+        fieldDefs: (STATE.doc && (STATE.doc as any).fields) || [],
+        myRole: STATE.signer ? String(STATE.signer.role || '') : '',
+      }).html;
+      var nodes = doc.querySelectorAll('[data-fk]');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i] as HTMLElement;
+        var k = el.getAttribute('data-fk');
+        if (!k || !(k in keep)) continue;
+        var v = keep[k];
+        if ((el.getAttribute('data-ftype') || 'text') === 'text') { (el as HTMLInputElement).value = String(v || ''); continue; }
+        var picked: { [x: string]: boolean } = {};
+        (Object.prototype.toString.call(v) === '[object Array]' ? v : []).forEach(function (x: string) { picked[String(x)] = true; });
+        var ins = el.querySelectorAll('input');
+        for (var j = 0; j < ins.length; j++) { var inp = ins[j] as HTMLInputElement; inp.checked = !!picked[inp.value]; }
+      }
+    });
 
-    var clear = document.getElementById('sg-clear'); if (clear) clear.onclick = function () { if (pad) pad.clear(); };
     var submit = document.getElementById('sg-submit'); if (submit) submit.onclick = doSubmit;
     var decline = document.getElementById('sg-decline'); if (decline) decline.onclick = doDecline;
   }
@@ -135,13 +155,13 @@
     if (submitting) return;
     var consent = document.getElementById('sg-consent') as HTMLInputElement | null;
     if (!consent || !consent.checked) { showErr('Please check the consent box to sign.'); return; }
-    if (!pad || !pad.isDrawn()) { showErr('Please draw your signature.'); return; }
+    var adopted = sigAdopted();
+    if (!adopted || !adopted.dataUrl) { showErr('Click "Your signature" in the document to adopt a signature.'); return; }
 
-    var values = sigCollectFields(document);
-    for (var i = 0; i < STATE.fields.length; i++) {
-      var f = STATE.fields[i];
-      if (!String(values[f.key] || '').trim()) { showErr('Please fill in "' + f.label + '".'); return; }
-    }
+    var doc = document.getElementById('sg-doc');
+    var missing = sigMissingRequired(doc, STATE.fields);
+    if (missing.length) { showErr('Please fill in: ' + missing.join(', ') + '.'); return; }
+    var values = sigCollectFields(doc);
 
     var btn = document.getElementById('sg-submit') as HTMLButtonElement | null;
     submitting = true;
@@ -152,7 +172,8 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'submit', entity: meta.entity, clientid: meta.clientid, logid: meta.logid,
-        token: meta.token, consent: true, signatureData: pad.dataUrl(), fieldValues: values,
+        token: meta.token, consent: true, signatureData: adopted.dataUrl,
+        typedName: adopted.typedName, fieldValues: values,
       }),
     })
       .then(function (r) { return r.json(); })

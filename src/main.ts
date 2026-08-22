@@ -59,6 +59,14 @@ function render(): void {
   if (app) app.innerHTML = html;
   const main = document.querySelector('.main');
   if (main) main.scrollTo(0, 0);
+
+  // Views are rendered as HTML strings, so anything needing real measurement has
+  // to run after the nodes exist. The agreement builder's page guides are measured
+  // off the live contenteditable's height — there is no way to compute them from
+  // a string.
+  if (parts[0] === 'agreementbuilder' && typeof agbDrawGuides === 'function') {
+    if (document.getElementById('agb-body')) agbDrawGuides();
+  }
 }
 
 window.addEventListener('hashchange', render);

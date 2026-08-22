@@ -1006,18 +1006,78 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 /* ===== Agreement Template Builder ===== */
 .agb-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
 .agb-side{display:flex;flex-direction:column;gap:14px}
-.agb-side .card{padding:14px 16px}
-.agb-role{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-.agb-role input{flex:1;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:13px}
-.agb-role select{height:32px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:12px}
+/* Base .card carries no padding — it is used both as a padded panel and as a bare
+   frame around full-bleed content (tables). Both builder columns want the padded
+   form, so both say so; without the second rule the merge-field buttons sat flush
+   against the card border. */
+.agb-side .card,.agb-main .card{padding:14px 16px}
+/* Two rows, not one. A flex row put the label input, the kind <select> and the
+   delete button side by side in a 300px column; the select has no min-width:0, so
+   its widest option ("Consultant (signs in-app)") set its intrinsic width and pushed
+   the row straight out of the card. Grid + min-width:0 makes the overflow impossible
+   rather than merely unlikely. */
+.agb-role{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;
+  margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--border)}
+.agb-role:last-of-type{border-bottom:0;margin-bottom:6px}
+.agb-role input{grid-column:1;grid-row:1;min-width:0;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:13px}
+.agb-role .agb-role-x{grid-column:2;grid-row:1}
+.agb-role select{grid-column:1 / -1;grid-row:2;width:100%;min-width:0;height:32px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:12px}
 .agb-main{display:flex;flex-direction:column;gap:14px}
-.agb-toolbar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:10px}
-.agb-body{min-height:360px;border:1px solid var(--border);border-radius:6px;padding:16px 18px;background:var(--card);color:var(--foreground);font-family:Georgia,serif;font-size:14px;line-height:1.6;outline:none}
-.agb-body:focus{border-color:var(--primary)}
+.agb-toolbar{display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:10px 12px;
+  border:1px solid var(--border);border-radius:8px;background:var(--card);position:sticky;top:0;z-index:5}
+.agb-tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px}
+
+/* ===== the page ==============================================================
+   US Letter at 96dpi: an 8.5in sheet with 1in margins, leaving 6.5in x 9in of
+   content. These are the SAME numbers the PDF renderer sets via @page — that is
+   the whole mechanism by which the editor can predict where a page will break.
+   Change one side and you must change the other.
+
+   The sheet sits on a grey desk and scrolls horizontally on narrow screens rather
+   than reflowing: a document whose line length changes with the browser window
+   cannot show you where page two starts. */
+.agb-sheet-scroll{overflow-x:auto;background:var(--muted);border:1px solid var(--border);
+  border-radius:8px;padding:24px 0}
+.agb-sheet{position:relative;width:8.5in;margin:0 auto;padding:1in;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.13),0 8px 24px rgba(0,0,0,.07)}
+.agb-body{width:6.5in;min-height:9in;outline:none;background:transparent;
+  color:#1a1a1a;font-family:Georgia,serif;font-size:12pt;line-height:1.6}
+.agb-body h1,.agb-body h2,.agb-body h3{font-family:Helvetica,Arial,sans-serif;color:#1a2b3c}
+
+/* Page boundaries, drawn over the text rather than between it. Real multi-container
+   pagination in a contenteditable breaks caret movement, selection across pages and
+   undo; a boundary line you can see and write past costs none of that and answers
+   the actual question, "where does page two start". */
+.agb-guides{position:absolute;left:0;right:0;top:1in;pointer-events:none;z-index:2}
+.agb-guide{position:absolute;left:0;right:0;border-top:1px dashed #b9c0c9}
+.agb-guide span{position:absolute;right:.35in;top:4px;font:600 9px/1 Helvetica,Arial,sans-serif;
+  letter-spacing:.08em;text-transform:uppercase;color:#9aa3ad;background:#fff;padding:2px 5px}
+
+/* A manual break is the exact one. JS pads it out to the next boundary so the
+   editor shows the same gap the PDF's page-break-before will produce. */
+.agb-body .pgbrk{position:relative;height:0;border-top:2px dashed #9fb4d6;margin:18px 0 0}
+.agb-body .pgbrk::after{content:'Page break';position:absolute;left:0;top:-7px;
+  font:600 9px/1 Helvetica,Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;
+  color:#5b7fb9;background:#fff;padding:2px 6px}
+
+/* ===== fillable-field manager ===== */
+.agb-field{border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:9px;background:var(--muted)}
+.agb-f-top{display:flex;gap:6px;align-items:center;margin-bottom:7px}
+.agb-f-label{flex:1;min-width:0;height:30px;padding:0 8px;border:1px solid var(--border);
+  border-radius:5px;background:var(--card);color:var(--foreground);font-size:13px;font-weight:600}
+.agb-f-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px}
+.agb-f-row select{min-width:0;height:30px;border:1px solid var(--border);border-radius:5px;
+  background:var(--card);color:var(--foreground);font-size:12px}
+.agb-f-opts{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:5px;
+  background:var(--card);color:var(--foreground);font-size:12px;padding:6px 8px;margin-bottom:7px;
+  font-family:inherit;resize:vertical}
+.agb-f-row2{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.agb-f-req{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted-foreground)}
+.agb-f-none{font-size:12.5px;margin:0 0 9px}
 .agb-tokens .agb-tok-row{display:flex;flex-wrap:wrap;gap:5px}
 .agb-tok-role{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px}
 .agb-tok-label{font-size:12px;font-weight:600;flex:0 0 auto}
-@media (max-width:820px){ .agb-grid{grid-template-columns:1fr} }
+@media (max-width:820px){ .agb-grid{grid-template-columns:1fr} .agb-sheet-scroll{padding:12px 0} }
 
 /* BlueIQ seat admin (Settings ▸ BlueIQ) */
 .biq-admin-summary{font-size:13px;color:var(--snf-muted,#6b7280);margin-bottom:12px}
@@ -1097,9 +1157,4 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 @media (max-width:640px){
   .sg-doc{padding:16px 14px;font-size:14px}
 }
-
-/* Read-only resolved signing URL (Settings ▸ Agreements). Deliberately not an input:
-   the address is derived from the org's Default Domain, not configured. */
-.agr-signurl{margin:8px 0 10px;padding:9px 12px;border:1px solid var(--border);border-radius:6px;
-  background:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
   color:var(--foreground);word-break:break-all}

@@ -15,6 +15,10 @@
 interface FileDoc { hasFile: boolean; filename: string; url: string; contentType: string; size: number; thumbUrl: string; }
 interface FileEntry { entryId: string; name: string; folder: string; timestamp: string; file: FileDoc; }
 
+// Where signed agreements are filed. Must match AGREEMENTS_FOLDER in both the
+// maestro and the AgreementSign ingester — the two write it, this reads it.
+const AGREEMENTS_FOLDER = 'Agreements';
+
 interface FilesState { list: FileEntry[] | null; loading: boolean; error: string | null; }
 const FILES_CACHE: { [cid: string]: FilesState } = {};
 // Current navigation location. `scope` decides which maestro endpoints back it
@@ -92,7 +96,14 @@ function allFolderPaths(cid: string): { [path: string]: boolean } {
   // Org default folders seed the tree. Clients and programs each have their own
   // configurable set (settings.files.defaultFolders vs .programDefaultFolders).
   if (FILES_VIEW.scope === 'program') programDefaultFolders().forEach(add);
-  else defaultFolders().forEach(add);
+  else {
+    defaultFolders().forEach(add);
+    // Signed agreements always file here, so the folder exists whether or not this
+    // client has one yet — an empty folder that is obviously the right place beats
+    // a folder that materialises out of nowhere after the first signature. Not a
+    // configurable default: the write side hardcodes it too (AGREEMENTS_FOLDER).
+    add(AGREEMENTS_FOLDER);
+  }
   const st = filesState(cid);
   (st.list || []).forEach(e => { if (e.folder) add(e.folder); });
   return set;

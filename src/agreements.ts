@@ -292,8 +292,9 @@ async function agrGetPdf(cid: string, entryId: string, btn?: HTMLButtonElement):
 // read, and any {{initials:…}}/{{text:…}} token addressed to them silently rendered
 // blank in the signed PDF because the values were never collected or sent.
 
-let AGR_SIGN_PAD: SigPad | null = null;
 let AGR_SIGN_FIELDS: SigField[] = [];
+// Kept so a re-render after adopting a signature can rebuild the same document.
+let AGR_SIGN_CTX: { cid: string; entryId: string; a: any } | null = null;
 
 async function agrSignSelf(cid: string, entryId: string): Promise<void> {
   if (document.getElementById('__agrSignModal')) return;
@@ -327,13 +328,10 @@ async function agrSignSelf(cid: string, entryId: string): Promise<void> {
     return;
   }
 
-  const rendered = sigRenderBody({
-    contentHtml: String(snap.contentHtml || ''),
-    merge: a.merge || {},
-    signers: (a.signers || []).map((s: any) => ({ role: s.role, name: s.name, status: s.status })),
-    myRole: String(a.myRole || ''),
-  });
-  AGR_SIGN_FIELDS = rendered.fields;
+  AGR_SIGN_CTX = { cid: cid, entryId: entryId, a: a };
+  sigResetAdopted();
+  sigOnChange(agrSignRepaint);
+  const rendered = agrSignRender(a, snap);
 
   const title = a.title || (snap.title || 'Agreement');
   const others = (a.signers || []).filter((s: any) => s.kind !== 'consultant').map((s: any) =>
@@ -348,36 +346,67 @@ async function agrSignSelf(cid: string, entryId: string): Promise<void> {
     <div class="modal-body">
       <div class="modal-err" hidden></div>
       ${others ? `<div class="agr-sign-others">${others}</div>` : ''}
-      <div class="sg-doc">${rendered.html}</div>
-      ${sigFieldsHtml(rendered.fields)}
-      <div class="sg-sign">
-        <h3>Your signature</h3>
-        <canvas id="agr-sign-pad" class="pl-sig"></canvas>
-        <div class="pl-sig-actions"><button class="btn outline sm" onclick="agrSignClear()">${ic('trash', 13)} Clear</button></div>
-        <label class="sg-consent"><input type="checkbox" id="agr-sign-consent">
-          I adopt this signature and agree it is legally binding.</label>
-      </div>
+      <div class="sg-doc" id="agr-sign-doc">${rendered.html}</div>
+      <label class="sg-consent"><input type="checkbox" id="agr-sign-consent">
+        I adopt this signature and agree it is legally binding.</label>
     </div>
     <div class="modal-foot"><span class="modal-status"></span><span style="flex:1"></span>
       <button class="btn ghost" onclick="agrSignClose()">${ic('x', 15)} Cancel</button>
       <button class="btn primary" onclick="agrSignSubmit('${esc(cid)}','${esc(entryId)}')">${ic('pen', 15)} Adopt &amp; Sign</button></div>
   </div>`;
 
-  if (AGR_SIGN_PAD) { AGR_SIGN_PAD.destroy(); }
-  AGR_SIGN_PAD = sigSetupPad(document.getElementById('agr-sign-pad') as HTMLCanvasElement | null);
+}
+
+// Render the document for the current adoption state and remember which fields the
+// consultant still owes us. Called on open and again after a signature is adopted,
+// so the yellow box turns into the actual signature in place.
+function agrSignRender(a: any, snap: any): SigBody {
+  const rendered = sigRenderBody({
+    contentHtml: String(snap.contentHtml || ''),
+    merge: a.merge || {},
+    signers: (a.signers || []),
+    fieldDefs: (snap.fields || []),
+    myRole: String(a.myRole || ''),
+  });
+  AGR_SIGN_FIELDS = rendered.fields;
+  return rendered;
+}
+
+// Repaint only the document, preserving anything already typed into inline inputs —
+// adopting a signature must not silently wipe fields the consultant already filled.
+function agrSignRepaint(): void {
+  const ctx = AGR_SIGN_CTX;
+  const doc = document.getElementById('agr-sign-doc');
+  if (!ctx || !doc) return;
+  const keep = sigCollectFields(doc);
+  const snap = ctx.a && ctx.a.contentSnapshot ? ctx.a.contentSnapshot : {};
+  doc.innerHTML = agrSignRender(ctx.a, snap).html;
+  const nodes = doc.querySelectorAll('[data-fk]');
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i] as HTMLElement;
+    const k = el.getAttribute('data-fk');
+    if (!k || !(k in keep)) continue;
+    const v = keep[k];
+    if ((el.getAttribute('data-ftype') || 'text') === 'text') { (el as HTMLInputElement).value = String(v || ''); continue; }
+    const picked: { [x: string]: boolean } = {};
+    (Array.isArray(v) ? v : []).forEach((x: string) => { picked[String(x)] = true; });
+    const ins = el.querySelectorAll('input');
+    for (let j = 0; j < ins.length; j++) { const inp = ins[j] as HTMLInputElement; inp.checked = !!picked[inp.value]; }
+  }
 }
 
 function agrSignEsc(e: KeyboardEvent): void { if (e.key === 'Escape') agrSignClose(); }
 
 function agrSignClose(): void {
-  if (AGR_SIGN_PAD) { AGR_SIGN_PAD.destroy(); AGR_SIGN_PAD = null; }
+  sigCloseModal();
+  sigOnChange(null);
+  sigResetAdopted();
   AGR_SIGN_FIELDS = [];
+  AGR_SIGN_CTX = null;
   const m = document.getElementById('__agrSignModal');
   if (m) m.remove();
   document.removeEventListener('keydown', agrSignEsc);
 }
-
-function agrSignClear(): void { if (AGR_SIGN_PAD) AGR_SIGN_PAD.clear(); }
 
 async function agrSignSubmit(cid: string, entryId: string): Promise<void> {
   const modal = document.getElementById('__agrSignModal'); if (!modal) return;
@@ -387,21 +416,22 @@ async function agrSignSubmit(cid: string, entryId: string): Promise<void> {
   const showErr = (msg: string) => { if (err) { err.textContent = msg; err.hidden = false; } };
 
   if (!consent || !consent.checked) { showErr('Please check the consent box.'); return; }
-  if (!AGR_SIGN_PAD || !AGR_SIGN_PAD.isDrawn()) { showErr('Please draw your signature.'); return; }
+  const adopted = sigAdopted();
+  if (!adopted || !adopted.dataUrl) { showErr('Click "Your signature" in the document to adopt a signature.'); return; }
 
-  // Every field the template addressed to this signer is required — a blank one
-  // renders as an empty gap in the signed PDF, which is not recoverable after the
-  // fact without voiding and re-sending.
-  const values = sigCollectFields(modal);
-  for (const f of AGR_SIGN_FIELDS) {
-    if (!String(values[f.key] || '').trim()) { showErr('Please fill in "' + f.label + '".'); return; }
-  }
+  // Required fields block submission; optional ones (unchecked in the builder) do
+  // not. A blank required field renders as an empty gap in the signed PDF, which is
+  // not recoverable after the fact without voiding and re-sending.
+  const doc = document.getElementById('agr-sign-doc');
+  const missing = sigMissingRequired(doc, AGR_SIGN_FIELDS);
+  if (missing.length) { showErr('Please fill in: ' + missing.join(', ') + '.'); return; }
+  const values = sigCollectFields(doc);
 
   if (err) err.hidden = true;
   if (status) status.textContent = 'Signing…';
   let res: any = null;
   try {
-    res = await apiCountersignAgreement(cid, entryId, AGR_SIGN_PAD.dataUrl(), values);
+    res = await apiCountersignAgreement(cid, entryId, adopted.dataUrl, values, adopted.typedName);
   } catch (e: any) {
     if (status) status.textContent = '';
     showErr(e && e.message ? e.message : String(e));

@@ -13,14 +13,17 @@
    Route: #/settings[/<panelKey>]
    ===================================================================== */
 
-interface SettingsPanel { key: string; label: string; icon: string; render: () => string; adminOnly?: boolean; }
+/* `href` turns a nav entry into a plain link somewhere else instead of a panel.
+   Agreements uses it: template authoring isn't configuration, and the old landing
+   card was a click between the user and the only thing on it. */
+interface SettingsPanel { key: string; label: string; icon: string; render: () => string; adminOnly?: boolean; href?: string; }
 const SETTINGS_PANELS: SettingsPanel[] = [
   { key: 'appearance', label: 'Appearance', icon: 'eye', render: () => appearancePanel() },
   { key: 'contacts', label: 'Contacts', icon: 'users', render: () => listEditorPanel('contacts.relationships') },
   { key: 'referrals', label: 'Referrals', icon: 'send', render: () => listEditorPanel('referrals.declineReasons') },
   { key: 'files', label: 'Files', icon: 'file', render: () => filesSettingsPanel() },
   { key: 'applications', label: 'Applications', icon: 'file', render: () => applicationsSettingsPanel() },
-  { key: 'agreements', label: 'Agreements', icon: 'fileText', render: () => agreementsSettingsPanel() },
+  { key: 'agreements', label: 'Agreements', icon: 'fileText', href: '#/agreementbuilder', render: () => '' },
   { key: 'email', label: 'Email Integration', icon: 'msg', render: () => emailConfigPanel() },
   { key: 'email-templates', label: 'Email Templates', icon: 'send', render: () => emailTemplatesPanel() },
   // BlueIQ seat management — only visible to BlueIQ admins (or global supers).
@@ -33,9 +36,13 @@ const SETTINGS_PANELS: SettingsPanel[] = [
 function viewSettings(panelKey?: string): string {
   // Hide admin-only panels (BlueIQ seats) unless the user can administer them.
   const visible = SETTINGS_PANELS.filter(p => !p.adminOnly || biqCanAdmin());
-  const active = visible.filter(p => p.key === panelKey)[0] || visible[0];
+  // A link-only entry has no panel to show. Reaching its key directly (a bookmark,
+  // a hand-typed URL) forwards to its destination rather than rendering blank.
+  const linked = visible.filter(p => p.key === panelKey && p.href)[0];
+  if (linked) { location.hash = linked.href!; return shell('settings', ''); }
+  const active = visible.filter(p => p.key === panelKey && !p.href)[0] || visible[0];
   const nav = visible.map(p =>
-    `<a href="#/settings/${p.key}" class="${p.key === active.key ? 'active' : ''}">${ic(p.icon, 16)}<span>${esc(p.label)}</span></a>`).join('');
+    `<a href="${p.href || '#/settings/' + p.key}" class="${!p.href && p.key === active.key ? 'active' : ''}">${ic(p.icon, 16)}<span>${esc(p.label)}</span></a>`).join('');
   const body = `${crumb([{ t: orgLabel(), h: '#/dashboard' }, { t: 'Settings', h: '#/settings' }, { t: active.label }])}
     ${pageHead('Settings', 'Configure your workspace. These apply across your whole organization.')}
     <div class="settings-layout">
@@ -426,64 +433,6 @@ function appInterpreterUrl(): string {
   return s && s.application && typeof s.application.interpreterUrl === 'string' ? s.application.interpreterUrl : '';
 }
 
-/* The public signing page is no longer configured — it is a fixed path on this org's
-   own GitSite, and the maestro resolves the host from the unit's Default Domain so a
-   cloned org gets its own. The old free-text "Public signing URL" input is gone: it was
-   a hand-wired satellite domain that no longer exists, and being a text box it was a
-   standing hazard (a password manager autofilling it and someone hitting Save would
-   have broken every signing link minted afterwards).
-
-   settings.agreements.signUrl is still honoured server-side as an override for any org
-   deliberately pinned elsewhere; there is just no UI to set one. */
-// Any legacy settings.agreements.signUrl left over from the satellite era. The server
-// no longer honours it — surfaced only so a stale value is visible rather than a
-// silent mystery.
-function agreementLegacySignUrl(): string {
-  const s: any = SETTINGS;
-  return s && s.agreements && typeof s.agreements.signUrl === 'string' ? s.agreements.signUrl : '';
-}
-
-// What the maestro will actually put in signing emails (computed server-side, read-only).
-function agreementResolvedSignUrl(): string {
-  const s: any = SETTINGS;
-  return s && typeof s._signUrlResolved === 'string' ? s._signUrlResolved : '';
-}
-
-function agreementsSettingsPanel(): string {
-  if (!SETTINGS && !SETTINGS_LOADING) loadSettings();
-  const resolved = agreementResolvedSignUrl();
-  const legacy = agreementLegacySignUrl();
-
-  const state = resolved
-    ? `<span class="pill success">Automatic</span>`
-    : `<span class="pill warning">No domain resolved — signing links won't generate</span>`;
-
-  // A leftover satellite URL is inert now, but say so plainly: it is exactly the kind
-  // of invisible stored value that sends parents to a retired page.
-  const legacyNote = legacy
-    ? `<div class="pab-hint" style="margin-top:10px"><b>Ignored:</b> this org still stores an old
-         <code>agreements.signUrl</code> of <code>${esc(legacy)}</code> from the satellite-site era.
-         It is no longer used and can be left alone.</div>`
-    : '';
-
-  return `<div class="section-head">
-      <div><h3>Agreements</h3><p>Author e-signature templates and send them for signature.</p></div>
-    </div>
-    <div class="card" style="padding:18px 20px;display:flex;align-items:center;gap:16px">
-      <div class="ico" style="flex:0 0 auto">${ic('fileText', 24)}</div>
-      <div style="flex:1">
-        <b style="display:block;font-size:15px">Agreement Template Builder</b>
-        <p style="margin:2px 0 0;font-size:13px;color:var(--muted-foreground)">Create engagement letters, fee agreements, and consents with signer roles + signature fields.</p>
-      </div>
-      <a class="btn primary" href="#/agreementbuilder">${ic('edit', 15)} Open builder</a>
-    </div>
-    <div class="card" style="margin-top:14px;padding:18px 20px">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">Signing page ${state}</label>
-      <div class="agr-signurl">${resolved ? esc(resolved) : '—'}</div>
-      <div class="pab-hint">Signers receive this address with their own entity, client, log &amp; token parameters appended. It follows this organization's Default Domain automatically — nothing to configure, and a copy of this org for another client picks up that client's domain.</div>
-      ${legacyNote}
-    </div>`;
-}
 
 
 function applicationsSettingsPanel(): string {

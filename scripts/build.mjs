@@ -40,13 +40,13 @@ const JS_ORDER = [
   'appbuilder', 'clientform', 'signing', 'agreements', 'agreementbuilder', 'chatbot',
   'main',
 ]
-const CSS_ORDER = ['tokens', 'styles', 'chatbot', 'appbuilder']
+const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']
 
 // The public signing page. `signing` must come first — signpage calls into it.
 // No 'api'/'auth'/'components': the page talks only to the public runAsSuper
 // ingester and must work with no session.
 const PUBLIC_JS_ORDER = ['signing', 'public/signpage']
-const PUBLIC_CSS_ORDER = ['public/signpage']
+const PUBLIC_CSS_ORDER = ['signingdoc', 'public/signpage']
 
 const shortHash = (s) => createHash('sha256').update(s).digest('hex').slice(0, 10)
 

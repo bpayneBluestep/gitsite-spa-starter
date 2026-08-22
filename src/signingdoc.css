@@ -1,0 +1,176 @@
+/* =====================================================================
+   signingdoc.css — styling for the shared signing renderer (signing.ts).
+
+   Loaded by BOTH bundles, exactly like signing.ts is: the consultant reading a
+   document in the CRM and a parent reading it on the public page must see the
+   same document. Anything surface-specific (page chrome, headers, buttons around
+   the document) stays in styles.css / public/signpage.css.
+
+   Colours come through --sg-* custom properties with literal fallbacks, so this
+   file works standalone on the public page and picks up the CRM's theme tokens
+   when the app defines them. Never reference var(--foreground) etc. directly
+   here — the public bundle has no token layer and would render invisible text.
+   ===================================================================== */
+
+.sg-doc {
+  --sg-ink: #1a1a1a;
+  --sg-line: #d9d9d9;
+  --sg-quiet: #8a8a8a;
+  --sg-mark: #f6c344;
+  --sg-mark-ink: #6b4a00;
+  --sg-mark-bg: #fff8e4;
+  --sg-focus: #2563eb;
+}
+
+/* ---- tokens belonging to somebody else, or not yet filled ---- */
+.sg-tok {
+  display: inline-block;
+  padding: 1px 7px;
+  border-bottom: 1px solid var(--sg-line);
+  color: var(--sg-quiet);
+  font-size: .92em;
+  font-style: italic;
+  min-width: 70px;
+  text-align: center;
+}
+.sg-tok-done { color: #1d7a4c; border-bottom-color: #bfe3cf; font-style: normal }
+
+/* A value already committed — yours-for-today, or a prior signer's answer.
+   Reads as part of the sentence, not as a form control. */
+.sg-ro {
+  display: inline;
+  color: var(--sg-ink);
+  border-bottom: 1px solid var(--sg-line);
+  padding: 0 3px;
+}
+
+/* ---- the click-to-sign box ----
+   The one thing on the page that should look unmistakably actionable. */
+.sg-sig-box {
+  display: inline-block;
+  font: inherit;
+  font-size: .95em;
+  padding: 7px 16px;
+  margin: 2px 0;
+  border: 1px solid var(--sg-mark);
+  border-left: 4px solid var(--sg-mark);
+  border-radius: 3px;
+  background: var(--sg-mark-bg);
+  color: var(--sg-mark-ink);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sg-sig-box:hover { background: #fff2cf }
+.sg-sig-box:focus-visible { outline: 2px solid var(--sg-focus); outline-offset: 2px }
+
+.sg-sig-wrap { display: inline-flex; align-items: flex-end; gap: 8px }
+.sg-sig-img { max-height: 52px; max-width: 260px; vertical-align: bottom }
+.sg-sig-other { opacity: .95 }
+.sg-sig-redo {
+  font: inherit; font-size: 11px; color: var(--sg-quiet);
+  background: none; border: 0; border-bottom: 1px dotted currentColor;
+  padding: 0; cursor: pointer;
+}
+
+/* ---- inline fillable fields ---- */
+.sg-inp {
+  font: inherit;
+  font-size: .95em;
+  padding: 3px 7px;
+  min-width: 190px;
+  border: 0;
+  border-bottom: 1.5px solid var(--sg-mark);
+  background: var(--sg-mark-bg);
+  color: var(--sg-ink);
+  border-radius: 2px 2px 0 0;
+}
+.sg-inp-sm { min-width: 76px; text-transform: uppercase }
+.sg-inp:focus { outline: 0; border-bottom-color: var(--sg-focus); background: #fff }
+
+.sg-choice { display: inline-flex; flex-wrap: wrap; gap: 6px 16px; vertical-align: middle }
+.sg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .95em; cursor: pointer; white-space: nowrap;
+}
+.sg-opt input { accent-color: var(--sg-focus); cursor: pointer }
+.sg-opt-ro {
+  display: inline-block; margin-right: 14px; font-size: .95em; color: var(--sg-ink);
+  white-space: nowrap;
+}
+
+/* ---- the signature modal ----
+   Owns its own colours outright: it is a floating surface over two different
+   hosts, and inheriting either one's document palette makes it look accidental. */
+.sg-modal-back {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(17, 24, 39, .55);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.sg-modal {
+  width: 100%; max-width: 620px;
+  background: #fff; color: #1a1a1a;
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+  padding: 22px 24px 18px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.sg-modal-h { font-size: 17px; font-weight: 700; margin-bottom: 14px }
+
+.sg-tabs { display: flex; gap: 4px; border-bottom: 1px solid #e5e5e5; margin-bottom: 16px }
+.sg-tab {
+  font: inherit; font-size: 13px; font-weight: 600;
+  padding: 8px 16px; border: 0; background: none; cursor: pointer;
+  color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sg-tab.active { color: #12325a; border-bottom-color: #12325a }
+
+.sg-lbl { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 5px }
+.sg-name {
+  width: 100%; font: inherit; font-size: 15px; padding: 9px 12px;
+  border: 1px solid #d1d5db; border-radius: 6px; margin-bottom: 14px;
+}
+.sg-name:focus { outline: 0; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .15) }
+
+/* Three faces, stacked so each is legible at signature size rather than
+   squeezed into a row of thumbnails. */
+.sg-faces { display: flex; flex-direction: column; gap: 8px }
+.sg-face {
+  font: inherit; text-align: left; cursor: pointer;
+  padding: 10px 16px; min-height: 62px;
+  border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+  display: flex; align-items: center;
+}
+.sg-face span { font-size: 32px; line-height: 1.25; color: #12325a; overflow: hidden; white-space: nowrap }
+.sg-face:hover { border-color: #c7cdd6; background: #fafbfc }
+.sg-face.active { border-color: #12325a; box-shadow: 0 0 0 2px rgba(18, 50, 90, .12) }
+
+.sg-pad {
+  width: 100%; height: 150px; display: block;
+  border: 1px dashed #c7cdd6; border-radius: 8px; background: #fcfcfd;
+  touch-action: none; cursor: crosshair;
+}
+.sg-clear {
+  font: inherit; font-size: 12px; color: #6b7280; background: none;
+  border: 0; padding: 8px 0 0; cursor: pointer; text-decoration: underline;
+}
+
+.sg-modal-f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px }
+.sg-btn {
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  padding: 9px 18px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+}
+.sg-btn.primary { background: #12325a; color: #fff }
+.sg-btn.primary:hover { background: #0d2542 }
+.sg-btn.ghost { background: none; color: #4b5563; border-color: #d1d5db }
+.sg-btn.ghost:hover { background: #f3f4f6 }
+
+.sg-modal .sg-err {
+  margin-top: 12px; font-size: 13px; color: #b42318;
+  background: #fef3f2; border: 1px solid #fecdca; border-radius: 6px; padding: 9px 12px;
+}
+
+@media (max-width: 560px) {
+  .sg-modal { padding: 18px 16px 14px }
+  .sg-face span { font-size: 26px }
+}

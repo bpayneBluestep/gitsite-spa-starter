@@ -323,8 +323,11 @@ function apiVoidAgreement(clientId: string, entryId: string, reason: string): Pr
 }
 // fieldValues carries whatever {{initials:…}} / {{text:…:Label}} tokens the template
 // addressed to the consultant's role; {} when it addressed none.
-function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string, fieldValues?: Record<string, string>): Promise<any> {
-  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {}, entity: agrEntity(clientId) });
+// `typedName` is the name the signer typed when adopting their signature — what
+// {{name:role}} and the certificate print. Distinct from the name the consultant
+// entered on the invite, which is only ever a label for who was asked.
+function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string, fieldValues?: Record<string, any>, typedName?: string): Promise<any> {
+  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {}, typedName: typedName || '', entity: agrEntity(clientId) });
 }
 // Generate-or-serve the signed PDF on demand (PDF generation is off the signing
 // path — it lives here, retryable, so a momentary converter hang never blocks signing).
