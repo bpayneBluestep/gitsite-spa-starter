@@ -1097,3 +1097,9 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 @media (max-width:640px){
   .sg-doc{padding:16px 14px;font-size:14px}
 }
+
+/* Read-only resolved signing URL (Settings ▸ Agreements). Deliberately not an input:
+   the address is derived from the org's Default Domain, not configured. */
+.agr-signurl{margin:8px 0 10px;padding:9px 12px;border:1px solid var(--border);border-radius:6px;
+  background:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+  color:var(--foreground);word-break:break-all}

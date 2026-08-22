@@ -426,17 +426,42 @@ function appInterpreterUrl(): string {
   return s && s.application && typeof s.application.interpreterUrl === 'string' ? s.application.interpreterUrl : '';
 }
 
+/* The public signing page is no longer configured — it is a fixed path on this org's
+   own GitSite, and the maestro resolves the host from the unit's Default Domain so a
+   cloned org gets its own. The old free-text "Public signing URL" input is gone: it was
+   a hand-wired satellite domain that no longer exists, and being a text box it was a
+   standing hazard (a password manager autofilling it and someone hitting Save would
+   have broken every signing link minted afterwards).
+
+   settings.agreements.signUrl is still honoured server-side as an override for any org
+   deliberately pinned elsewhere; there is just no UI to set one. */
 function agreementSignUrl(): string {
   const s: any = SETTINGS;
   return s && s.agreements && typeof s.agreements.signUrl === 'string' ? s.agreements.signUrl : '';
 }
 
+// What the maestro will actually put in signing emails (computed server-side, read-only).
+function agreementResolvedSignUrl(): string {
+  const s: any = SETTINGS;
+  return s && typeof s._signUrlResolved === 'string' ? s._signUrlResolved : '';
+}
+
 function agreementsSettingsPanel(): string {
   if (!SETTINGS && !SETTINGS_LOADING) loadSettings();
-  const url = agreementSignUrl();
-  const urlState = url ? `<span class="pill success">Configured</span>` : `<span class="pill warning">Not set — signing links won't generate</span>`;
+  const override = agreementSignUrl();
+  const resolved = agreementResolvedSignUrl();
+  const effective = override || resolved;
+
+  const state = effective
+    ? `<span class="pill success">Automatic</span>`
+    : `<span class="pill warning">No domain resolved — signing links won't generate</span>`;
+
+  const overrideNote = override
+    ? `<div class="pab-hint" style="margin-top:8px">An explicit <code>agreements.signUrl</code> override is set for this org, so it is used instead of the automatic address above.</div>`
+    : '';
+
   return `<div class="section-head">
-      <div><h3>Agreements</h3><p>Author e-signature templates and connect the public signing page.</p></div>
+      <div><h3>Agreements</h3><p>Author e-signature templates and send them for signature.</p></div>
     </div>
     <div class="card" style="padding:18px 20px;display:flex;align-items:center;gap:16px">
       <div class="ico" style="flex:0 0 auto">${ic('fileText', 24)}</div>
@@ -446,39 +471,14 @@ function agreementsSettingsPanel(): string {
       </div>
       <a class="btn primary" href="#/agreementbuilder">${ic('edit', 15)} Open builder</a>
     </div>
-    <div class="card edit-card" style="margin-top:14px">
-      <div class="edit-err" hidden></div>
-      <div class="pab-fld">
-        <label style="display:flex;align-items:center;gap:8px">Public signing URL ${urlState}</label>
-        <input type="text" id="agr-sign-url" value="${esc(url)}" placeholder="https://connect.example.org/sign" autocomplete="off" style="width:100%;box-sizing:border-box">
-        <div class="pab-hint">The satellite-site page hosting the Agreement signing report. Entity, client, log &amp; token params are appended automatically per signer.</div>
-      </div>
-      <div class="edit-foot">
-        <span class="edit-status"></span><span style="flex:1"></span>
-        <button class="btn primary js-save-signurl" onclick="saveAgreementSignUrl()">${ic('save', 15)} Save</button>
-      </div>
+    <div class="card" style="margin-top:14px;padding:18px 20px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">Signing page ${state}</label>
+      <div class="agr-signurl">${effective ? esc(effective) : '—'}</div>
+      <div class="pab-hint">Signers receive this address with their own entity, client, log &amp; token parameters appended. It follows this organization's Default Domain automatically — nothing to configure, and a copy of this org for another client picks up that client's domain.</div>
+      ${overrideNote}
     </div>`;
 }
 
-async function saveAgreementSignUrl(): Promise<void> {
-  const input = document.getElementById('agr-sign-url') as HTMLInputElement | null;
-  if (!input) return;
-  const url = input.value.trim();
-  const btn = document.querySelector('.js-save-signurl') as HTMLButtonElement | null;
-  const status = document.querySelector('.edit-card .edit-status') as HTMLElement | null;
-  if (btn) btn.disabled = true;
-  if (status) status.textContent = 'Saving…';
-  try {
-    const merged = await saveSettingsSection('agreements', { signUrl: url });
-    SETTINGS = merged || SETTINGS;
-    toast('Saved');
-    render();
-  } catch (e: any) {
-    if (btn) btn.disabled = false;
-    if (status) status.textContent = '';
-    toast('Save failed: ' + (e && e.message ? e.message : String(e)));
-  }
-}
 
 function applicationsSettingsPanel(): string {
   if (!SETTINGS && !SETTINGS_LOADING) loadSettings();
