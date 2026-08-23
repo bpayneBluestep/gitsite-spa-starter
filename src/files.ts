@@ -112,7 +112,9 @@ function allFolderPaths(cid: string): { [path: string]: boolean } {
     add(AGREEMENTS_FOLDER);
   }
   const st = filesState(cid);
-  (st.list || []).forEach(e => { if (e.folder) add(e.folder); });
+  // Dot-prefixed folders are system storage (envelope source PDFs live in
+  // "Agreements/.sources") — never shown, never counted.
+  (st.list || []).forEach(e => { if (e.folder && !isHiddenPath(e.folder)) add(e.folder); });
   return set;
 }
 
@@ -124,8 +126,13 @@ function subfoldersOf(cid: string, path: string): string[] {
   return out;
 }
 
+function isHiddenPath(p: string): boolean {
+  return splitPath(p).some(seg => seg.charAt(0) === '.');
+}
+
 function filesIn(cid: string, path: string): FileEntry[] {
   const st = filesState(cid);
+  if (isHiddenPath(path)) return [];
   return (st.list || []).filter(e => e.file && e.file.hasFile && (e.folder || '') === path)
     .sort((a, b) => (a.name || a.file.filename || '').toLowerCase().localeCompare((b.name || b.file.filename || '').toLowerCase()));
 }

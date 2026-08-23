@@ -1,461 +1,324 @@
 /* =====================================================================
-   agreements.ts — the Agreements (e-signature) record section (live).
+   agreements.ts — the Agreements tab: envelopes (schema v3, DocuSign model).
 
-   Per client, lists agreement instances from the `agreements` MEF (maestro
-   listAgreements/getAgreement/createAgreement/sendAgreement/voidAgreement).
-   Flow: New agreement -> pick an Active template -> assign the template's signer
-   roles to real people (external signers get name+email; consultant roles are
-   the logged-in user, signed in-app) -> Create (Draft) -> Send (mints per-signer
-   tokens, emails links via the maestro, shows copy-link fallback).
+   An envelope is N uploaded PDFs + M recipients + placed tabs, one status, one
+   audit trail. Documents are AUTHORED ELSEWHERE (Word → PDF) and uploaded; the
+   old rich-text builder and its {{token}} grammar are retired.
 
-   External signers sign on the public signing page (/spa/sign.html) via the
-   dedicated runAsSuper ingester; the consultant countersigns in-app (§ countersign).
-   Both surfaces render the document through the shared renderer in signing.ts, so
-   the two views cannot drift. Injected controls use data-k, never `name`.
+   This phase (1) covers the envelope object: list, create, upload/reorder/remove
+   documents, recipients, void. Field placement is phase 2; sending and signing
+   are phase 3 — the Send button exists but is disabled with an honest tooltip.
+
+   Legacy authored agreements remain readable forever: listEnvelopes returns them
+   tagged legacy:true, completed ones open their signed PDF, unfinished ones can
+   only be voided. Their creation/signing UI is gone.
+
+   Backend: apiListEnvelopes/apiGetEnvelope/apiCreateEnvelope/apiUploadEnvelopeDoc/
+   apiRemoveEnvelopeDoc/apiReorderEnvelopeDocs/apiSetEnvelopeRecipients/
+   apiVoidEnvelope (api.ts). Thumbnails come from pdfrt.ts (pdfOpen/pdfRenderPage) —
+   the same PDF→pixels path the designer and signing view will use.
    ===================================================================== */
 
-interface AgrSigner { id: string; role: string; name: string; email: string; kind: string; order: number; status: string; signedAt?: string; hasToken?: boolean; }
-interface LiveAgreement {
-  entryId: string; title: string; templateRef: string; templateName: string;
-  status: string; signers: AgrSigner[]; audit: any[];
-  signedPdf?: string; documentHash?: string; sentAt?: string; completedAt?: string; createdAt?: string; voidReason?: string;
-  links?: { id: string; role: string; name: string; email?: string; kind: string; link: string }[];
+interface EnvDoc { id: string; name: string; order: number; sourceUrl: string; fileEntryId?: string; pages: number; kind: string; }
+interface EnvRecipient {
+  id: string; role: string; name: string; email: string;
+  kind: 'external' | 'consultant' | 'inperson' | 'cc';
+  routingOrder: number; status: string; signedAt: string;
+  typedName: string; signatureData: string; tabValues: Record<string, any>; hasToken: boolean;
+}
+interface Envelope {
+  entryId: string; schemaVersion: number; title: string; status: string;
+  sentAt: string; completedAt: string; voidReason: string; createdBy: string; createdAt: string;
+  signedPdf: string; documents: EnvDoc[]; tabs: any[]; anchors: any[];
+  recipients: EnvRecipient[]; audit: any[];
 }
 
-interface AgrState { list: LiveAgreement[] | null; loading: boolean; error: string | null; }
-const AGR_CACHE: { [clientId: string]: AgrState } = {};
-let AGR_TEMPLATES: any[] | null = null; // active templates, loaded once for the picker
+interface EnvState { list: any[] | null; loading: boolean; error: string | null; }
+const ENV_CACHE: { [cid: string]: EnvState } = {};
+// The envelope currently open in the detail editor (Draft) or viewer.
+let ENV_OPEN: Envelope | null = null;
+let ENV_OPEN_CID = '';
+// Rendered first-page thumbnails, keyed by source url — pdf.js work is not free,
+// so a thumbnail is rendered once per url per session.
+const ENV_THUMBS: { [url: string]: string } = {};
 
-function agrState(cid: string): AgrState {
-  if (!AGR_CACHE[cid]) AGR_CACHE[cid] = { list: null, loading: false, error: null };
-  return AGR_CACHE[cid];
+function envState(cid: string): EnvState {
+  if (!ENV_CACHE[cid]) ENV_CACHE[cid] = { list: null, loading: false, error: null };
+  return ENV_CACHE[cid];
 }
 
-async function loadAgreements(cid: string, force = false): Promise<void> {
-  const st = agrState(cid);
+async function loadEnvelopes(cid: string, force = false): Promise<void> {
+  const st = envState(cid);
   if (st.loading) return;
   if (st.list && !force) return;
   st.loading = true; st.error = null;
-  try {
-    const rows = await apiListAgreements(cid);
-    st.list = (rows || []).slice().sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  } catch (e: any) { st.error = e && e.message ? e.message : String(e); }
+  try { st.list = await apiListEnvelopes(cid) || []; }
+  catch (e: any) { st.error = e && e.message ? e.message : String(e); st.list = null; }
   st.loading = false;
-  if (location.hash.indexOf('/agreements') >= 0) render();
+  if (typeof render === 'function') render();
 }
 
-// ── status pill styling ──────────────────────────────────────────────────────
-function agrStatusClass(s: string): string {
-  if (s === 'Completed') return 'ok';
-  if (s === 'Voided' || s === 'Declined') return 'muted';
-  if (s === 'Partially Signed') return 'warn';
-  if (s === 'Sent') return 'info';
-  return 'draft';
-}
-
-function signerProgress(a: LiveAgreement): string {
-  const total = (a.signers || []).length;
-  const signed = (a.signers || []).filter(s => s.status === 'signed').length;
-  return signed + '/' + total + ' signed';
-}
-
-// ── section ──────────────────────────────────────────────────────────────────
+/* ---- section entry (client record tab) ---- */
 function agreementsSection(c: Client): string {
-  const st = agrState(c.id);
-  if (st.list === null) {
-    if (!st.loading && !st.error) loadAgreements(c.id);
-    return sectionHead('Agreements', 'E-signature agreements for ' + esc(c.first) + '.')
-      + (st.error ? errorCard(st.error) : loadingCard('Loading agreements…'));
-  }
-  const head = `<div class="section-head"><div><h3>Agreements</h3><p>Send templates for e-signature and track who has signed.</p></div>
-    <button class="btn primary" onclick="agrOpenNew('${esc(c.id)}')">${ic('plus', 15)} New agreement</button></div>`;
+  if (ENV_OPEN && ENV_OPEN_CID !== c.id) { ENV_OPEN = null; }
+  const st = envState(c.id);
+  if (st.list === null) { if (!st.loading && !st.error) loadEnvelopes(c.id); return st.error ? errorCard(st.error) : loadingCard('Loading agreements…'); }
+  if (ENV_OPEN) { setTimeout(envRenderThumbs, 0); return envDetail(c, ENV_OPEN); }
+  return envList(c, st.list);
+}
 
-  if (!st.list.length) {
-    return head + `<div class="card"><div class="empty"><div class="ico">${ic('fileText', 22)}</div><b>No agreements yet</b>
-      <p>Create one from a template to send for signature.</p></div></div>`;
-  }
+/* ---- list ---- */
+function envStatusPill(status: string, legacy: boolean): string {
+  const cls = status === 'Completed' ? 'ok' : status === 'Voided' || status === 'Declined' ? 'muted'
+    : status === 'Draft' ? 'draft' : 'info';
+  return `<span class="pill ${cls}">${esc(status)}</span>${legacy ? ' <span class="pill muted" title="Created by the retired rich-text builder — read-only">legacy</span>' : ''}`;
+}
 
-  const cards = st.list.map(a => {
-    const cls = agrStatusClass(a.status);
-    const signers = (a.signers || []).map(s => {
-      const badge = s.status === 'signed' ? `<span class="agr-s-ok">${ic('check', 12)} signed</span>`
-        : s.status === 'declined' ? `<span class="agr-s-no">declined</span>`
-        : s.kind === 'consultant' ? `<span class="agr-s-wait">awaiting you</span>`
-        : `<span class="agr-s-wait">pending</span>`;
-      return `<div class="agr-signer"><span class="agr-s-name">${esc(s.name || s.role)}${s.kind === 'consultant' ? ' <span class="muted">(you)</span>' : ''}</span>${badge}</div>`;
-    }).join('');
-    const actions: string[] = [];
-    const consultantPending = (a.signers || []).some(s => s.kind === 'consultant' && s.status !== 'signed' && s.status !== 'declined');
-    if ((a.status === 'Sent' || a.status === 'Partially Signed') && consultantPending) actions.push(`<button class="btn primary sm" onclick="agrSignSelf('${esc(c.id)}','${esc(a.entryId)}')">${ic('pen', 14)} Sign now</button>`);
-    if (a.status === 'Draft') actions.push(`<button class="btn primary sm" onclick="agrSend('${esc(c.id)}','${esc(a.entryId)}')">${ic('mail', 14)} Send</button>`);
-    if (a.status === 'Sent' || a.status === 'Partially Signed') actions.push(`<button class="btn outline sm" onclick="agrSend('${esc(c.id)}','${esc(a.entryId)}')">${ic('mail', 14)} Resend / links</button>`);
-    // Routed through filesOpen, not a bare <a target="_blank">: the platform serves
-    // documents as Content-Disposition: attachment, so a plain link saves the file
-    // instead of showing it. See filesOpen in files.ts.
-    if (a.status === 'Completed' && a.signedPdf) actions.push(`<button class="btn primary sm" onclick="filesOpen('${esc(a.signedPdf)}')">${ic('download', 14)} Signed PDF</button>`);
-    else if (a.status === 'Completed') actions.push(`<button class="btn outline sm" onclick="agrGetPdf('${esc(c.id)}','${esc(a.entryId)}',this)" title="The signed PDF is being generated in the background; click to check if it's ready.">${ic('download', 14)} PDF generating…</button>`);
-    if (a.status !== 'Completed' && a.status !== 'Voided') actions.push(`<button class="btn ghost sm" onclick="agrVoid('${esc(c.id)}','${esc(a.entryId)}')">${ic('trash', 14)} Void</button>`);
-    const linksBlock = a.links && a.links.length
-      ? `<div class="agr-links">${a.links.filter(l => l.kind === 'external' && l.link).map(l => `<div class="agr-link-row"><span>${esc(l.name || l.role)}</span><input readonly value="${esc(l.link)}" onclick="this.select()"><button class="btn ghost sm" onclick="agrCopy('${esc(l.link)}')">Copy</button></div>`).join('')}</div>`
-      : '';
-    return `<div class="card agr-card">
-      <div class="agr-top">
-        <div><b>${esc(a.title)}</b><div class="agr-sub">${esc(a.templateName || '')} · ${signerProgress(a)}</div></div>
-        <span class="pill ${cls}">${esc(a.status)}</span>
+function envList(c: Client, rows: any[]): string {
+  const head = `<div class="section-head">
+    <div><h3>Agreements</h3><p>Envelopes of one or more PDF documents sent for e-signature.</p></div>
+    <div><button class="btn primary" onclick="envNew('${esc(c.id)}')">${ic('plus', 15)} New envelope</button></div></div>`;
+  if (!rows.length) {
+    return head + `<div class="card"><div class="empty"><div class="ico">${ic('fileText', 22)}</div>
+      <b>No agreements yet</b><p>Create an envelope, upload the PDFs to sign, and add recipients.</p></div></div>`;
+  }
+  const body = rows.map(r => {
+    const who = (r.recipients || []).map((x: any) =>
+      `<span class="env-chip ${x.status === 'signed' ? 'done' : ''}" title="${esc(x.kind)} · ${esc(x.status)}">${esc(x.name || '?')}</span>`).join('');
+    const open = r.legacy
+      ? (r.signedPdf ? `<button class="btn outline sm" onclick="filesOpen('${esc(r.signedPdf)}')">${ic('download', 14)} Signed PDF</button>` : '')
+      : `<button class="btn outline sm" onclick="envOpen('${esc(c.id)}','${esc(r.entryId)}')">${ic('chevR', 14)} Open</button>`;
+    const voidBtn = (r.status !== 'Completed' && r.status !== 'Voided')
+      ? `<button class="btn ghost sm" onclick="envVoid('${esc(c.id)}','${esc(r.entryId)}',${r.legacy ? 'true' : 'false'})">${ic('trash', 14)} Void</button>` : '';
+    return `<div class="card env-row">
+      <div class="env-row-main">
+        <div class="env-row-title"><b>${esc(r.title)}</b> ${envStatusPill(r.status, !!r.legacy)}</div>
+        <div class="env-row-meta">${r.docCount} document${r.docCount === 1 ? '' : 's'} · ${esc(fmtDate(r.createdAt) || '')}${r.completedAt ? ' · completed ' + esc(fmtDate(r.completedAt) || '') : ''}</div>
+        <div class="env-row-who">${who}</div>
       </div>
-      <div class="agr-signers">${signers}</div>
-      ${linksBlock}
-      <div class="agr-actions">${actions.join('')}</div>
+      <div class="env-row-acts">${open}${voidBtn}</div>
     </div>`;
   }).join('');
-  return head + `<div class="agr-list">${cards}</div>`;
+  return head + body;
 }
 
-// small helper: a section header (matches the app's .section-head)
-function sectionHead(title: string, desc: string): string {
-  return `<div class="section-head"><div><h3>${esc(title)}</h3><p>${esc(desc)}</p></div></div>`;
-}
-
-// ── New-agreement modal ────────────────────────────────────────────────────────
-async function agrOpenNew(cid: string): Promise<void> {
-  if (document.getElementById('__agrModal')) return;
-  // load active templates for the picker
-  if (AGR_TEMPLATES === null) {
-    try { AGR_TEMPLATES = (await apiListAgreementTemplates() || []).filter((t: any) => (t.status || '') === 'Active'); }
-    catch (e) { AGR_TEMPLATES = []; }
-  }
-  const host = document.createElement('div');
-  host.className = 'modal-overlay';
-  host.id = '__agrModal';
-  host.innerHTML = agrModalHtml(cid);
-  host.addEventListener('mousedown', e => { if (e.target === host) agrCloseNew(); });
-  document.body.appendChild(host);
-  document.addEventListener('keydown', agrEsc);
-}
-function agrEsc(e: KeyboardEvent): void { if (e.key === 'Escape') agrCloseNew(); }
-function agrCloseNew(): void { const m = document.getElementById('__agrModal'); if (m) m.remove(); document.removeEventListener('keydown', agrEsc); }
-
-function agrModalHtml(cid: string): string {
-  const opts = (AGR_TEMPLATES || []).map((t: any) => `<option value="${esc(t.entryId)}">${esc(t.name)}</option>`).join('');
-  const picker = (AGR_TEMPLATES && AGR_TEMPLATES.length)
-    ? `<select data-k="templateRef" onchange="agrTemplatePicked('${esc(cid)}')"><option value="">Choose a template…</option>${opts}</select>`
-    : `<div class="muted">No Active templates yet. Create one in <b>Settings ▸ Agreements</b>.</div>`;
-  return `<div class="modal-card" role="dialog" aria-modal="true" aria-label="New agreement">
-    <div class="modal-head"><div><b>New Agreement</b><p>Pick a template and assign signers.</p></div>
-      <button class="ico-x" onclick="agrCloseNew()">${ic('x', 18)}</button></div>
-    <div class="modal-body">
-      <div class="modal-err" hidden></div>
-      <div class="field full"><label>Template</label>${picker}</div>
-      <div class="field full"><label>Title</label><input data-k="title" placeholder="e.g. Engagement Agreement — Chen"></div>
-      <div id="agr-signers-wrap"></div>
-    </div>
-    <div class="modal-foot"><span class="modal-status"></span><span style="flex:1"></span>
-      <button class="btn ghost" onclick="agrCloseNew()">${ic('x', 15)} Cancel</button>
-      <button class="btn primary" onclick="agrCreateSubmit('${esc(cid)}')" id="agr-create-btn" disabled>${ic('plus', 15)} Create</button>
-    </div>
-  </div>`;
-}
-
-// When a template is picked, render a signer row per role + default the title.
-function agrTemplatePicked(cid: string): void {
-  const modal = document.getElementById('__agrModal'); if (!modal) return;
-  const sel = modal.querySelector('select[data-k="templateRef"]') as HTMLSelectElement | null;
-  const wrap = modal.querySelector('#agr-signers-wrap') as HTMLElement | null;
-  const btn = modal.querySelector('#agr-create-btn') as HTMLButtonElement | null;
-  const titleInput = modal.querySelector('input[data-k="title"]') as HTMLInputElement | null;
-  if (!sel || !wrap) return;
-  const tpl = (AGR_TEMPLATES || []).find((t: any) => t.entryId === sel.value);
-  if (!tpl) { wrap.innerHTML = ''; if (btn) btn.disabled = true; return; }
-  if (titleInput && !titleInput.value) titleInput.value = tpl.name || 'Agreement';
-  const roles = (tpl.bodyJson && Array.isArray(tpl.bodyJson.roles)) ? tpl.bodyJson.roles : [];
-  const me = (typeof SESSION !== 'undefined' && SESSION && SESSION.fullName) ? SESSION.fullName : (ME.first + ' ' + ME.last);
-  wrap.innerHTML = '<div class="agr-roles-h">Signers</div>' + roles.map((r: any, i: number) => {
-    if (r.kind === 'consultant') {
-      return `<div class="agr-role" data-role="${esc(r.id)}" data-kind="consultant" data-name="${esc(me)}">
-        <div class="agr-role-label">${esc(r.label || r.id)} <span class="muted">— you (${esc(me)}), sign in-app</span></div></div>`;
-    }
-    return `<div class="agr-role" data-role="${esc(r.id)}" data-kind="external">
-      <div class="agr-role-label">${esc(r.label || r.id)}</div>
-      <div class="agr-role-inputs">
-        <input data-rk="name" placeholder="Full name">
-        <input data-rk="email" placeholder="email@example.com" oninput="agrValidate()">
-      </div></div>`;
-  }).join('');
-  agrValidate();
-}
-
-// Enable Create only when every external signer has a name + email.
-function agrValidate(): void {
-  const modal = document.getElementById('__agrModal'); if (!modal) return;
-  const btn = modal.querySelector('#agr-create-btn') as HTMLButtonElement | null;
-  const roles = Array.from(modal.querySelectorAll('.agr-role')) as HTMLElement[];
-  let ok = roles.length > 0;
-  roles.forEach(r => {
-    if (r.getAttribute('data-kind') === 'external') {
-      const email = (r.querySelector('input[data-rk="email"]') as HTMLInputElement | null);
-      const name = (r.querySelector('input[data-rk="name"]') as HTMLInputElement | null);
-      if (!email || !name || !name.value.trim() || !/.+@.+\..+/.test(email.value.trim())) ok = false;
-    }
-  });
-  if (btn) btn.disabled = !ok;
-}
-
-async function agrCreateSubmit(cid: string): Promise<void> {
-  const modal = document.getElementById('__agrModal'); if (!modal) return;
-  const sel = modal.querySelector('select[data-k="templateRef"]') as HTMLSelectElement | null;
-  const titleInput = modal.querySelector('input[data-k="title"]') as HTMLInputElement | null;
-  const status = modal.querySelector('.modal-status') as HTMLElement | null;
-  const err = modal.querySelector('.modal-err') as HTMLElement | null;
-  if (!sel || !sel.value) { if (err) { err.textContent = 'Pick a template.'; err.hidden = false; } return; }
-  const roles = Array.from(modal.querySelectorAll('.agr-role')) as HTMLElement[];
-  const signers = roles.map((r, i) => {
-    const kind = r.getAttribute('data-kind') || 'external';
-    if (kind === 'consultant') return { role: r.getAttribute('data-role'), name: r.getAttribute('data-name') || '', email: '', kind: 'consultant', order: i + 1 };
-    return {
-      role: r.getAttribute('data-role'),
-      name: (r.querySelector('input[data-rk="name"]') as HTMLInputElement).value.trim(),
-      email: (r.querySelector('input[data-rk="email"]') as HTMLInputElement).value.trim(),
-      kind: 'external', order: i + 1,
-    };
-  });
-  if (err) err.hidden = true;
-  if (status) status.textContent = 'Creating…';
+/* ---- create / open / void ---- */
+async function envNew(cid: string): Promise<void> {
+  const title = prompt('Envelope title (e.g. "Admissions Packet"):', '');
+  if (title == null) return;
   try {
-    await apiCreateAgreement(cid, sel.value, titleInput ? titleInput.value.trim() : '', signers);
-    agrCloseNew();
-    await loadAgreements(cid, true);
-    toast('Agreement created — send it when ready.');
-  } catch (e: any) {
-    if (status) status.textContent = '';
-    if (err) { err.textContent = e && e.message ? e.message : String(e); err.hidden = false; }
-  }
+    const env = await apiCreateEnvelope(cid, title.trim() || 'Untitled envelope');
+    ENV_OPEN = env; ENV_OPEN_CID = cid;
+    await loadEnvelopes(cid, true);
+  } catch (e: any) { toast('Create failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
-// ── send / void / copy ─────────────────────────────────────────────────────────
-async function agrSend(cid: string, entryId: string): Promise<void> {
+async function envOpen(cid: string, entryId: string): Promise<void> {
   try {
-    const res = await apiSendAgreement(cid, entryId);
-    const st = agrState(cid);
-    if (st.list) { const i = st.list.findIndex(a => a.entryId === entryId); if (i >= 0) st.list[i] = res; }
+    ENV_OPEN = await apiGetEnvelope(cid, entryId); ENV_OPEN_CID = cid;
     render();
-    toast('Agreement sent — signing links emailed.');
-  } catch (e: any) { toast('Send failed: ' + (e && e.message ? e.message : String(e))); }
+  } catch (e: any) { toast(e && e.message ? e.message : String(e)); }
 }
 
-async function agrVoid(cid: string, entryId: string): Promise<void> {
-  if (!window.confirm('Void this agreement? Signers will no longer be able to sign. This can\'t be undone.')) return;
+function envClose(): void { ENV_OPEN = null; render(); }
+
+async function envVoid(cid: string, entryId: string, legacy: boolean): Promise<void> {
+  const reason = prompt('Void this envelope? Recipients will no longer be able to sign.\nReason (optional):', '');
+  if (reason == null) return;
   try {
-    await apiVoidAgreement(cid, entryId, '');
-    await loadAgreements(cid, true);
-    toast('Agreement voided.');
+    if (legacy) await apiVoidAgreement(cid, entryId, reason);
+    else await apiVoidEnvelope(cid, entryId, reason);
+    if (ENV_OPEN && ENV_OPEN.entryId === entryId) ENV_OPEN = null;
+    await loadEnvelopes(cid, true);
+    toast('Envelope voided.');
   } catch (e: any) { toast('Void failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
-function agrCopy(link: string): void {
-  try { navigator.clipboard.writeText(link); toast('Link copied.'); }
-  catch (_e) { toast('Copy failed — select the text manually.'); }
-}
+/* ---- detail (Draft editor / read-only viewer) ---- */
+const ENV_KINDS: { v: string; label: string }[] = [
+  { v: 'external', label: 'Signs via email link' },
+  { v: 'consultant', label: 'Signs in-app (me)' },
+  { v: 'inperson', label: 'Signs in person' },
+  { v: 'cc', label: 'Receives a copy (CC)' },
+];
 
-// Signed-PDF button — a manual retry seam.
-//
-// This used to be read-only (re-check and hope the background worker had produced
-// the file) because a completed agreement had no reliable render trigger and a
-// B.io.pdf hang would have stranded the user on a click. Both halves of that have
-// changed: signing now always kicks a render (see agrSignSubmit), so this button is
-// the exception path rather than the only path, and getSignedPdf is idempotent —
-// it serves the cached Files copy when one exists and renders only when it doesn't.
-// So: re-check first, and only render if the PDF genuinely isn't there yet.
-async function agrGetPdf(cid: string, entryId: string, btn?: HTMLButtonElement): Promise<void> {
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = 'Checking…'; }
-  try {
-    const a = await apiGetAgreement(cid, entryId);
-    if (a && a.signedPdf) { filesOpen(a.signedPdf); return; }
-    // Not there — ask the server to produce it now.
-    if (btn) btn.innerHTML = 'Generating…';
-    const res = await apiGetSignedPdf(cid, entryId);
-    if (res && res.url) { filesOpen(res.url); await loadAgreements(cid, true); }
-    else { toast('Your signed PDF is still being generated — check back in a moment.'); }
-  } catch (e: any) {
-    // A render can hang and 504. The signature, consent and hash are already
-    // committed, so this is only a delay: the background worker retries.
-    toast('The signed PDF is taking longer than usual to generate — your signature is safely recorded. Check back in a few minutes.');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
-}
+function envDetail(c: Client, env: Envelope): string {
+  const draft = env.status === 'Draft';
+  const docs = (env.documents || []).slice().sort((a, b) => a.order - b.order);
+  const docRows = docs.length ? docs.map((d, i) => `
+    <div class="env-doc" data-doc="${esc(d.id)}">
+      <canvas class="env-thumb" data-thumb="${esc(d.sourceUrl)}" width="72" height="93"></canvas>
+      <div class="env-doc-body">
+        <b>${esc(d.name)}</b>
+        <div class="meta">${d.pages ? d.pages + ' page' + (d.pages === 1 ? '' : 's') : 'PDF'}</div>
+      </div>
+      ${draft ? `<div class="env-doc-acts">
+        <button class="ico-mini" title="Move up" ${i === 0 ? 'disabled' : ''} onclick="envMoveDoc('${esc(d.id)}',-1)">${ic('chevU', 14)}</button>
+        <button class="ico-mini" title="Move down" ${i === docs.length - 1 ? 'disabled' : ''} onclick="envMoveDoc('${esc(d.id)}',1)">${ic('chevD', 14)}</button>
+        <button class="ico-mini danger" title="Remove" onclick="envRemoveDoc('${esc(d.id)}')">${ic('trash', 14)}</button>
+      </div>` : ''}
+    </div>`).join('')
+    : `<div class="empty" style="padding:18px"><b>No documents yet</b><p>Upload the PDF(s) this envelope will send for signature.</p></div>`;
 
-// ── consultant in-app countersign (full-document signing view) ─────────────────
-//
-// The consultant is a real signer, so they get a real signing experience: the whole
-// frozen agreement, merge values resolved, their own tokens marked and their
-// initials/text fields collected — the same renderer (signing.ts) the parent-facing
-// page uses. It used to be a bare signature pad in a small modal, which meant the
-// consultant was adopting a legally binding signature on a document they could not
-// read, and any {{initials:…}}/{{text:…}} token addressed to them silently rendered
-// blank in the signed PDF because the values were never collected or sent.
+  const recRows = (env.recipients || []).map((r, i) => draft ? `
+    <div class="env-rec" data-i="${i}">
+      <input class="env-rec-name" value="${esc(r.name)}" placeholder="Full name" oninput="envRecChange(${i},'name',this.value)">
+      <input class="env-rec-email" value="${esc(r.email)}" placeholder="Email (for email link)" oninput="envRecChange(${i},'email',this.value)">
+      <select onchange="envRecChange(${i},'kind',this.value)">
+        ${ENV_KINDS.map(k => `<option value="${k.v}"${r.kind === k.v ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}
+      </select>
+      <input class="env-rec-order" type="number" min="1" value="${r.routingOrder}" title="Routing order" onchange="envRecChange(${i},'routingOrder',this.value)">
+      <button class="ico-mini danger" title="Remove" onclick="envRecRemove(${i})">${ic('trash', 14)}</button>
+    </div>` : `
+    <div class="env-rec-ro">
+      <b>${esc(r.name)}</b> <span class="meta">${esc(r.email || '')} · ${esc(r.kind)} · order ${r.routingOrder}</span>
+      <span class="pill ${r.status === 'signed' ? 'ok' : 'draft'}">${esc(r.status)}</span>
+    </div>`).join('');
 
-let AGR_SIGN_FIELDS: SigField[] = [];
-// Kept so a re-render after adopting a signature can rebuild the same document.
-let AGR_SIGN_CTX: { cid: string; entryId: string; a: any } | null = null;
-
-async function agrSignSelf(cid: string, entryId: string): Promise<void> {
-  if (document.getElementById('__agrSignModal')) return;
-
-  const host = document.createElement('div');
-  host.className = 'modal-overlay';
-  host.id = '__agrSignModal';
-  host.innerHTML = `<div class="modal-card agr-sign-card" role="dialog" aria-modal="true" aria-label="Sign agreement">
-    <div class="modal-head"><div><b>Sign this agreement</b><p>Loading the document…</p></div>
-      <button class="ico-x" onclick="agrSignClose()">${ic('x', 18)}</button></div>
-    <div class="modal-body">${loadingCard('Loading agreement…')}</div>
-  </div>`;
-  host.addEventListener('mousedown', e => { if (e.target === host) agrSignClose(); });
-  document.body.appendChild(host);
-  document.addEventListener('keydown', agrSignEsc);
-
-  let a: any = null;
-  try {
-    a = await apiGetAgreement(cid, entryId);
-  } catch (e: any) {
-    const body = host.querySelector('.modal-body');
-    if (body) body.innerHTML = errorCard(e && e.message ? e.message : String(e));
-    return;
-  }
-  if (!document.getElementById('__agrSignModal')) return; // closed while loading
-
-  const snap = a && a.contentSnapshot ? a.contentSnapshot : null;
-  if (!snap || !snap.contentHtml) {
-    const body = host.querySelector('.modal-body');
-    if (body) body.innerHTML = errorCard('This agreement has no document content to sign. Re-create it from a template.');
-    return;
-  }
-
-  AGR_SIGN_CTX = { cid: cid, entryId: entryId, a: a };
-  sigResetAdopted();
-  sigOnChange(agrSignRepaint);
-  const rendered = agrSignRender(a, snap);
-
-  const title = a.title || (snap.title || 'Agreement');
-  const others = (a.signers || []).filter((s: any) => s.kind !== 'consultant').map((s: any) =>
-    `<div class="agr-signer"><span class="agr-s-name">${esc(s.name || s.role)}</span>${
-      s.status === 'signed' ? `<span class="agr-s-ok">${ic('check', 12)} signed</span>`
-      : s.status === 'declined' ? `<span class="agr-s-no">declined</span>`
-      : `<span class="agr-s-wait">pending</span>`}</div>`).join('');
-
-  host.innerHTML = `<div class="modal-card agr-sign-card" role="dialog" aria-modal="true" aria-label="Sign agreement">
-    <div class="modal-head"><div><b>${esc(title)}</b><p>Review the full agreement, then adopt your signature.</p></div>
-      <button class="ico-x" onclick="agrSignClose()">${ic('x', 18)}</button></div>
-    <div class="modal-body">
-      <div class="modal-err" hidden></div>
-      ${others ? `<div class="agr-sign-others">${others}</div>` : ''}
-      <div class="sg-doc" id="agr-sign-doc">${rendered.html}</div>
-      <label class="sg-consent"><input type="checkbox" id="agr-sign-consent">
-        I adopt this signature and agree it is legally binding.</label>
+  return `<div class="section-head">
+      <div><h3>${draft
+        ? `<input id="env-title" class="env-title-input" value="${esc(env.title)}" onchange="envSaveRecipients()">`
+        : esc(env.title)} ${envStatusPill(env.status, false)}</h3>
+      <p>${draft ? 'Upload documents and add recipients. Field placement and sending come next.' : 'Read-only — this envelope is no longer a draft.'}</p></div>
+      <div>
+        <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
+        ${draft ? `<button class="btn primary" disabled title="Sending arrives in phase 3 — envelopes can be fully prepared now.">${ic('mail', 15)} Send</button>` : ''}
+        ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
+      </div></div>
+    <div class="card card-pad">
+      <div class="agr-roles-h">Documents</div>
+      ${docRows}
+      ${draft ? `<button class="btn outline sm" onclick="envPickPdf()">${ic('upload', 14)} Add PDF</button>
+        <span class="meta" style="margin-left:8px">PDF only · signed in the order shown</span>` : ''}
     </div>
-    <div class="modal-foot"><span class="modal-status"></span><span style="flex:1"></span>
-      <button class="btn ghost" onclick="agrSignClose()">${ic('x', 15)} Cancel</button>
-      <button class="btn primary" onclick="agrSignSubmit('${esc(cid)}','${esc(entryId)}')">${ic('pen', 15)} Adopt &amp; Sign</button></div>
-  </div>`;
-
+    <div class="card card-pad" style="margin-top:14px">
+      <div class="agr-roles-h">Recipients</div>
+      ${recRows || '<p class="meta">No recipients yet.</p>'}
+      ${draft ? `<button class="btn outline sm" onclick="envRecAdd()">${ic('plus', 14)} Add recipient</button>` : ''}
+    </div>`;
 }
 
-// Render the document for the current adoption state and remember which fields the
-// consultant still owes us. Called on open and again after a signature is adopted,
-// so the yellow box turns into the actual signature in place.
-function agrSignRender(a: any, snap: any): SigBody {
-  const rendered = sigRenderBody({
-    contentHtml: String(snap.contentHtml || ''),
-    merge: a.merge || {},
-    signers: (a.signers || []),
-    fieldDefs: (snap.fields || []),
-    myRole: String(a.myRole || ''),
+/* Thumbnails: render each canvas marked data-thumb once, cached by url as a data
+   URL so revisits are instant and pdf.js runs at most once per document. */
+async function envRenderThumbs(): Promise<void> {
+  const canvases = document.querySelectorAll('canvas[data-thumb]');
+  for (let i = 0; i < canvases.length; i++) {
+    const canvas = canvases[i] as HTMLCanvasElement;
+    const url = canvas.getAttribute('data-thumb') || '';
+    if (!url) continue;
+    if (ENV_THUMBS[url]) {
+      const img = new Image();
+      img.onload = () => { const ctx = canvas.getContext('2d'); if (ctx) { canvas.width = img.width; canvas.height = img.height; ctx.drawImage(img, 0, 0); } };
+      img.src = ENV_THUMBS[url];
+      continue;
+    }
+    try {
+      const pdf = await pdfOpen(url);
+      await pdfRenderPage(pdf, 1, canvas, 72);
+      ENV_THUMBS[url] = canvas.toDataURL('image/png');
+      try { pdf.destroy(); } catch (_e) { /* */ }
+    } catch (_e) { /* leave the blank canvas — a thumbnail is never worth an error */ }
+  }
+}
+
+/* ---- documents ---- */
+function envPickPdf(): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf';
+  input.multiple = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files || []);
+    for (const f of files) {
+      if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { toast(f.name + ' is not a PDF.'); continue; }
+      if (f.size > 25 * 1024 * 1024) { toast(f.name + ' is over the 25 MB limit.'); continue; }
+      try {
+        const b64 = await envFileToBase64(f);
+        // Page count read client-side — the server has no reason to parse the PDF.
+        let pages = 0;
+        try { const pdf = await pdfOpen(URL.createObjectURL(f)); pages = pdf.numPages; try { pdf.destroy(); } catch (_e) { /* */ } } catch (_e) { /* */ }
+        const name = f.name.replace(/\.pdf$/i, '');
+        if (!ENV_OPEN) return;
+        ENV_OPEN = await apiUploadEnvelopeDoc(ENV_OPEN_CID, ENV_OPEN.entryId, name, b64, pages);
+        render();
+      } catch (e: any) { toast('Upload failed: ' + (e && e.message ? e.message : String(e))); }
+    }
+    loadEnvelopes(ENV_OPEN_CID, true);
+  };
+  input.click();
+}
+
+function envFileToBase64(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(f);
   });
-  AGR_SIGN_FIELDS = rendered.fields;
-  return rendered;
 }
 
-// Repaint only the document, preserving anything already typed into inline inputs —
-// adopting a signature must not silently wipe fields the consultant already filled.
-function agrSignRepaint(): void {
-  const ctx = AGR_SIGN_CTX;
-  const doc = document.getElementById('agr-sign-doc');
-  if (!ctx || !doc) return;
-  const keep = sigCollectFields(doc);
-  const snap = ctx.a && ctx.a.contentSnapshot ? ctx.a.contentSnapshot : {};
-  doc.innerHTML = agrSignRender(ctx.a, snap).html;
-  const nodes = doc.querySelectorAll('[data-fk]');
-  for (let i = 0; i < nodes.length; i++) {
-    const el = nodes[i] as HTMLElement;
-    const k = el.getAttribute('data-fk');
-    if (!k || !(k in keep)) continue;
-    const v = keep[k];
-    if ((el.getAttribute('data-ftype') || 'text') === 'text') { (el as HTMLInputElement).value = String(v || ''); continue; }
-    const picked: { [x: string]: boolean } = {};
-    (Array.isArray(v) ? v : []).forEach((x: string) => { picked[String(x)] = true; });
-    const ins = el.querySelectorAll('input');
-    for (let j = 0; j < ins.length; j++) { const inp = ins[j] as HTMLInputElement; inp.checked = !!picked[inp.value]; }
-  }
-}
-
-function agrSignEsc(e: KeyboardEvent): void { if (e.key === 'Escape') agrSignClose(); }
-
-function agrSignClose(): void {
-  sigCloseModal();
-  sigOnChange(null);
-  sigResetAdopted();
-  AGR_SIGN_FIELDS = [];
-  AGR_SIGN_CTX = null;
-  const m = document.getElementById('__agrSignModal');
-  if (m) m.remove();
-  document.removeEventListener('keydown', agrSignEsc);
-}
-
-async function agrSignSubmit(cid: string, entryId: string): Promise<void> {
-  const modal = document.getElementById('__agrSignModal'); if (!modal) return;
-  const consent = modal.querySelector('#agr-sign-consent') as HTMLInputElement | null;
-  const err = modal.querySelector('.modal-err') as HTMLElement | null;
-  const status = modal.querySelector('.modal-status') as HTMLElement | null;
-  const showErr = (msg: string) => { if (err) { err.textContent = msg; err.hidden = false; } };
-
-  if (!consent || !consent.checked) { showErr('Please check the consent box.'); return; }
-  const adopted = sigAdopted();
-  if (!adopted || !adopted.dataUrl) { showErr('Click "Your signature" in the document to adopt a signature.'); return; }
-
-  // Required fields block submission; optional ones (unchecked in the builder) do
-  // not. A blank required field renders as an empty gap in the signed PDF, which is
-  // not recoverable after the fact without voiding and re-sending.
-  const doc = document.getElementById('agr-sign-doc');
-  const missing = sigMissingRequired(doc, AGR_SIGN_FIELDS);
-  if (missing.length) { showErr('Please fill in: ' + missing.join(', ') + '.'); return; }
-  const values = sigCollectFields(doc);
-
-  if (err) err.hidden = true;
-  if (status) status.textContent = 'Signing…';
-  let res: any = null;
+async function envRemoveDoc(docId: string): Promise<void> {
+  if (!ENV_OPEN) return;
+  if (!confirm('Remove this document from the envelope?')) return;
   try {
-    res = await apiCountersignAgreement(cid, entryId, adopted.dataUrl, values, adopted.typedName);
-  } catch (e: any) {
-    if (status) status.textContent = '';
-    showErr(e && e.message ? e.message : String(e));
-    return;
-  }
+    ENV_OPEN = await apiRemoveEnvelopeDoc(ENV_OPEN_CID, ENV_OPEN.entryId, docId);
+    render();
+  } catch (e: any) { toast('Remove failed: ' + (e && e.message ? e.message : String(e))); }
+}
 
-  agrSignClose();
-  await loadAgreements(cid, true);
+async function envMoveDoc(docId: string, dir: number): Promise<void> {
+  if (!ENV_OPEN) return;
+  const ids = ENV_OPEN.documents.slice().sort((a, b) => a.order - b.order).map(d => d.id);
+  const i = ids.indexOf(docId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  ids[i] = ids[j]; ids[j] = docId;
+  try {
+    ENV_OPEN = await apiReorderEnvelopeDocs(ENV_OPEN_CID, ENV_OPEN.entryId, ids);
+    render();
+  } catch (e: any) { toast('Reorder failed: ' + (e && e.message ? e.message : String(e))); }
+}
 
-  // The last signature is the catalyst for the signed PDF. Rendering is deliberately
-  // OFF the commit path (B.io.pdf hangs under load, uncatchable), so the server
-  // commits the legal record and tells us a PDF is owed; we kick the render here,
-  // fire-and-forget. This mirrors exactly what the parent-facing signing page does
-  // from its done screen. Without it a consultant-last agreement had no render
-  // trigger at all and sat waiting on the background worker.
-  if (res && res.completed && res.pdfPending) {
-    apiGetSignedPdf(cid, entryId)
-      .then(() => loadAgreements(cid, true))
-      .catch(() => { /* the background worker is the backstop; never bother the user */ });
-    toast('Signed — the agreement is complete. Generating the signed PDF…');
-  } else {
-    toast(res && res.completed ? 'Signed — the agreement is complete.' : 'Signed.');
-  }
+/* ---- recipients ----
+   Edits mutate ENV_OPEN locally on each keystroke and persist on change/blur via
+   envSaveRecipients — one server write per meaningful edit, not per keypress. */
+function envRecChange(i: number, key: string, val: string): void {
+  if (!ENV_OPEN || !ENV_OPEN.recipients[i]) return;
+  (ENV_OPEN.recipients[i] as any)[key] = key === 'routingOrder' ? Math.max(1, Number(val) || 1) : val;
+  if (key === 'kind' || key === 'routingOrder') envSaveRecipients();
+  else envSaveRecipientsDebounced();
+}
+
+let ENV_SAVE_T: any = null;
+function envSaveRecipientsDebounced(): void {
+  if (ENV_SAVE_T) clearTimeout(ENV_SAVE_T);
+  ENV_SAVE_T = setTimeout(envSaveRecipients, 700);
+}
+
+async function envSaveRecipients(): Promise<void> {
+  if (!ENV_OPEN) return;
+  if (ENV_SAVE_T) { clearTimeout(ENV_SAVE_T); ENV_SAVE_T = null; }
+  const titleEl = document.getElementById('env-title') as HTMLInputElement | null;
+  const title = titleEl ? titleEl.value.trim() : '';
+  try {
+    ENV_OPEN = await apiSetEnvelopeRecipients(ENV_OPEN_CID, ENV_OPEN.entryId, ENV_OPEN.recipients, title);
+  } catch (e: any) { toast('Save failed: ' + (e && e.message ? e.message : String(e))); }
+}
+
+function envRecAdd(): void {
+  if (!ENV_OPEN) return;
+  const maxOrder = ENV_OPEN.recipients.reduce((m, r) => Math.max(m, r.routingOrder || 1), 0);
+  ENV_OPEN.recipients.push({
+    id: '', role: '', name: '', email: '', kind: 'external',
+    routingOrder: maxOrder + 1, status: 'pending', signedAt: '',
+    typedName: '', signatureData: '', tabValues: {}, hasToken: false,
+  });
+  render();
+}
+
+async function envRecRemove(i: number): Promise<void> {
+  if (!ENV_OPEN) return;
+  ENV_OPEN.recipients.splice(i, 1);
+  await envSaveRecipients();
+  render();
 }

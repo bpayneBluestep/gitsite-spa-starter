@@ -338,6 +338,38 @@ function apiGetSignedPdf(clientId: string, entryId: string): Promise<any> {
   return maestroPost('getSignedPdf', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
 }
 
+/* ---- envelopes (schema v3, DocuSign model) ----
+   Same MEF as legacy agreements; the maestro tells them apart by
+   contentSnapshot.schemaVersion. listEnvelopes returns BOTH, tagging legacy rows,
+   so one call drives the whole Agreements tab. */
+function apiListEnvelopes(clientId: string): Promise<any[]> {
+  return maestroPost('listEnvelopes', { id: clientId, entity: agrEntity(clientId) });
+}
+function apiGetEnvelope(clientId: string, entryId: string): Promise<any> {
+  return maestroPost('getEnvelope', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
+}
+function apiCreateEnvelope(clientId: string, title: string): Promise<any> {
+  return maestroPost('createEnvelope', { id: clientId, title: title, entity: agrEntity(clientId) });
+}
+function apiUploadEnvelopeDoc(clientId: string, entryId: string, name: string, dataBase64: string, pages: number): Promise<any> {
+  return maestroPost('uploadEnvelopeDoc', { id: clientId, entryId: entryId, name: name, dataBase64: dataBase64, pages: pages, entity: agrEntity(clientId) });
+}
+function apiRemoveEnvelopeDoc(clientId: string, entryId: string, docId: string): Promise<any> {
+  return maestroPost('removeEnvelopeDoc', { id: clientId, entryId: entryId, docId: docId, entity: agrEntity(clientId) });
+}
+function apiReorderEnvelopeDocs(clientId: string, entryId: string, docIds: string[]): Promise<any> {
+  return maestroPost('reorderEnvelopeDocs', { id: clientId, entryId: entryId, docIds: docIds, entity: agrEntity(clientId) });
+}
+function apiSetEnvelopeRecipients(clientId: string, entryId: string, recipients: any[], title?: string): Promise<any> {
+  return maestroPost('setEnvelopeRecipients', { id: clientId, entryId: entryId, recipients: recipients, title: title || '', entity: agrEntity(clientId) });
+}
+function apiVoidEnvelope(clientId: string, entryId: string, reason: string): Promise<any> {
+  return maestroPost('voidEnvelope', { id: clientId, entryId: entryId, reason: reason, entity: agrEntity(clientId) });
+}
+function apiUploadTemplateDoc(name: string, dataBase64: string): Promise<any> {
+  return maestroPost('uploadTemplateDoc', { name: name, dataBase64: dataBase64 });
+}
+
 /* ---- program overlay (Directory Layer 2: consultant-private data on a program) ----
    The SPA only holds the DIRECTORY program id; the maestro resolves it to a local
    overlay record (find-or-create). Hints (cached display + slug) let a first write
