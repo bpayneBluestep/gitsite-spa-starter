@@ -366,6 +366,12 @@ function apiSetEnvelopeRecipients(clientId: string, entryId: string, recipients:
 function apiVoidEnvelope(clientId: string, entryId: string, reason: string): Promise<any> {
   return maestroPost('voidEnvelope', { id: clientId, entryId: entryId, reason: reason, entity: agrEntity(clientId) });
 }
+function apiSaveEnvelopeTabs(clientId: string, entryId: string, tabs: any[]): Promise<any> {
+  return maestroPost('saveEnvelopeTabs', { id: clientId, entryId: entryId, tabs: tabs, entity: agrEntity(clientId) });
+}
+function apiSaveTemplateDesign(entryId: string, tabs: any[], roles: any[]): Promise<any> {
+  return maestroPost('saveTemplateDesign', { entryId: entryId, tabs: tabs, roles: roles });
+}
 function apiUploadTemplateDoc(name: string, dataBase64: string): Promise<any> {
   return maestroPost('uploadTemplateDoc', { name: name, dataBase64: dataBase64 });
 }

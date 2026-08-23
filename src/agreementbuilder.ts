@@ -99,7 +99,8 @@ function tplEditor(t: any): string {
     : `<p class="meta">No documents yet — upload the PDFs this template sends.</p>`;
 
   return `<div class="page-head"><div><h1>${t.entryId ? 'Edit' : 'New'} Template</h1><p>Upload the packet's PDFs. Field placement opens here in the next phase.</p></div>
-      <div><button class="btn ghost" onclick="tplCancel()">${ic('x', 14)} Cancel</button>
+      <div>${t.entryId ? `<a class="btn outline" href="#/designer/tpl/${esc(t.entryId)}">${ic('edit', 15)} Place fields${(b.tabs || []).length ? ' (' + b.tabs.length + ')' : ''}</a>` : ''}
+      <button class="btn ghost" onclick="tplCancel()">${ic('x', 14)} Cancel</button>
       <button class="btn primary" onclick="tplSave()" id="tpl-save">${ic('save', 15)} Save</button></div></div>
     <div class="agb-grid">
       <div class="agb-side">

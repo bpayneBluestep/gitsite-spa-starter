@@ -37,7 +37,7 @@ const JS_ORDER = [
   'icons', 'theme', 'data', 'api', 'auth', 'components', 'chrome', 'views', 'record',
   'formedit', 'contacts', 'communications', 'tasks', 'referrals', 'files',
   'programoverlay', 'settings', 'email', 'emailcompose', 'applications',
-  'appbuilder', 'clientform', 'pdfrt', 'pdfspike', 'signing', 'agreements', 'agreementbuilder', 'chatbot',
+  'appbuilder', 'clientform', 'pdfrt', 'pdfgeo', 'pdfspike', 'signing', 'agreements', 'agreementbuilder', 'designer', 'chatbot',
   'main',
 ]
 const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']

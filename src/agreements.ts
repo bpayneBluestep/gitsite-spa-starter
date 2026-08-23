@@ -182,7 +182,8 @@ function envDetail(c: Client, env: Envelope): string {
       <p>${draft ? 'Upload documents and add recipients. Field placement and sending come next.' : 'Read-only — this envelope is no longer a draft.'}</p></div>
       <div>
         <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
-        ${draft ? `<button class="btn primary" disabled title="Sending arrives in phase 3 — envelopes can be fully prepared now.">${ic('mail', 15)} Send</button>` : ''}
+        ${draft ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>
+        <button class="btn primary" disabled title="Sending arrives in phase 3 — envelopes can be fully prepared now.">${ic('mail', 15)} Send</button>` : ''}
         ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
     <div class="card card-pad">

@@ -1011,6 +1011,52 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .pill.info{background:color-mix(in srgb,var(--primary) 15%,var(--card));color:var(--primary)}
 .pill.draft{background:var(--muted);color:var(--muted-foreground)}
 
+/* ===== Field-placement designer ===== */
+.dsg-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+.dsg-side{display:flex;flex-direction:column;gap:12px;position:sticky;top:8px}
+.dsg-main{min-width:0}
+.dsg-toolbar{display:flex;gap:4px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.dsg-z-on{background:var(--muted);font-weight:700}
+.dsg-savestate{font-size:12px;color:var(--muted-foreground);margin-right:10px}
+.dsg-scroll{overflow:auto;background:var(--muted);border:1px solid var(--border);border-radius:8px;
+  padding:22px;max-height:calc(100vh - 210px)}
+.dsg-docname{font:600 12px/1 Helvetica,Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted-foreground);margin:14px 2px 8px}
+.dsg-docname:first-child{margin-top:0}
+.dsg-page{position:relative;margin:0 auto 18px;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.14),0 6px 18px rgba(0,0,0,.06)}
+.dsg-page-err{min-height:120px;outline:2px dashed #e2725b}
+.dsg-canvas{display:block}
+.dsg-overlay{position:absolute;inset:0}
+
+/* Owner (recipient/role) buttons */
+.dsg-owners{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.dsg-owner{display:flex;align-items:center;gap:8px;font:inherit;font-size:13px;text-align:left;
+  padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--card);
+  color:var(--foreground);cursor:pointer}
+.dsg-owner-dot{width:11px;height:11px;border-radius:50%;background:var(--oc);flex:0 0 auto}
+.dsg-owner.active{border-color:var(--oc);box-shadow:0 0 0 1px var(--oc)}
+
+/* Palette */
+.dsg-palette{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dsg-pal{font:inherit;font-size:12.5px;padding:8px 6px;border:1px solid var(--border);border-radius:7px;
+  background:var(--card);color:var(--foreground);cursor:pointer}
+.dsg-pal:hover{border-color:var(--primary)}
+.dsg-pal.armed{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* Placed tabs. Color comes from the owner via --oc; color-mix keeps the fill
+   translucent so the document text stays readable underneath. */
+.dsg-tab{position:absolute;box-sizing:border-box;border:1.5px solid var(--oc);border-radius:3px;
+  background:color-mix(in srgb,var(--oc) 16%,transparent);cursor:move;touch-action:none;
+  display:flex;align-items:center;overflow:hidden}
+.dsg-tab.selected{box-shadow:0 0 0 2px color-mix(in srgb,var(--oc) 55%,transparent);z-index:3}
+.dsg-tab-label{font:600 10px/1 Helvetica,Arial,sans-serif;color:var(--oc);padding:0 4px;
+  white-space:nowrap;pointer-events:none;user-select:none}
+.dsg-prop-acts{display:flex;gap:6px;margin-top:6px}
+#dsg-props textarea{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;
+  background:var(--card);color:var(--foreground);font:inherit;font-size:12.5px;padding:6px 8px}
+@media (max-width:900px){ .dsg-layout{grid-template-columns:1fr} .dsg-side{position:static} }
+
 /* ===== Envelopes (Agreements tab, schema v3) ===== */
 .env-row{display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px}
 .env-row-main{flex:1;min-width:0}
