@@ -184,7 +184,9 @@ function envDetail(c: Client, env: Envelope): string {
       <div><h3>${draft
         ? `<input id="env-title" class="env-title-input" value="${esc(env.title)}" onchange="envSaveRecipients()">`
         : esc(env.title)} ${envStatusPill(env.status, false)}</h3>
-      <p>${draft ? 'Upload documents and add recipients. Field placement and sending come next.' : 'Read-only — this envelope is no longer a draft.'}</p></div>
+      <p>${draft ? 'Upload documents and add recipients. Field placement and sending come next.'
+        : inflight ? (ENV_CORRECT ? 'Correcting — edit pending recipients, or open Place fields to move their fields.' : 'In flight — use Correct to edit recipients or move fields; Resend to nudge a signer.')
+        : 'Read-only.'}</p></div>
       <div>
         <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
         ${editable ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>` : ''}
@@ -349,7 +351,9 @@ async function envSend(cid: string, entryId: string, opts?: any): Promise<void> 
 /* Send options — routing, expiration, reminders — chosen at send time. */
 function envSendOpen(cid: string, entryId: string): void {
   const env = ENV_OPEN; if (!env) return;
-  const seq = env.routing ? env.routing === 'sequential' : true;
+  // readEnvelope always reports a routing (parallel by default), so an unsent draft
+  // can't be told apart by its snapshot — default the checkbox ON for drafts.
+  const seq = env.status === 'Draft' ? true : env.routing === 'sequential';
   const host = document.createElement('div');
   host.className = 'modal-overlay'; host.id = '__envSendOpts';
   host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(520px,94vw)">
@@ -414,7 +418,7 @@ function envMetaLine(env: Envelope): string {
   if (env.status === 'Draft') return '';
   const bits: string[] = [];
   bits.push(env.routing === 'sequential' ? 'Signing order enforced' : 'All signers at once');
-  if (env.expiresAt) bits.push('Expires ' + (fmtDate(env.expiresAt) || env.expiresAt));
+  if (env.expiresAt) bits.push('Expires ' + (fmtDate(String(env.expiresAt).slice(0, 10)) || env.expiresAt)); // fmtDate wants a bare date, expiresAt is a full ISO stamp
   if (env.remindEveryDays) bits.push('Reminders every ' + env.remindEveryDays + ' day' + (env.remindEveryDays === 1 ? '' : 's'));
   if (env.senderName) bits.push('Sent by ' + env.senderName);
   return `<div class="env-meta-line meta">${bits.map(esc).join(' · ')}</div>`;
