@@ -13,7 +13,14 @@
    ===================================================================== */
 
 interface FileDoc { hasFile: boolean; filename: string; url: string; contentType: string; size: number; thumbUrl: string; }
-interface FileEntry { entryId: string; name: string; folder: string; timestamp: string; file: FileDoc; }
+interface FileEntry {
+  entryId: string; name: string; folder: string; timestamp: string; file: FileDoc;
+  /* Synthesised by the maestro from agreements.signedPdf — shown here, stored on the
+     agreement. Read-only: no rename, move or delete, because "delete" would mean
+     destroying a signed document from a file browser. */
+  virtual?: boolean;
+  agreementEntryId?: string;
+}
 
 // Where signed agreements are filed. Must match AGREEMENTS_FOLDER in both the
 // maestro and the AgreementSign ingester — the two write it, this reads it.
@@ -227,20 +234,31 @@ function fileTile(f: FileEntry): string {
     : `<div class="dt-fileicon">${ic('file', 30)}<span class="dt-ext">${esc(fileExt(f))}</span></div>`;
   const label = f.name || f.file.filename || 'Untitled';
   const date = fmtDate(f.timestamp) || '';
-  const sub = [date, humanSize(f.file.size)].filter(Boolean).join(' · ');
-  return `<div class="drive-tile drive-file" draggable="true" title="${esc(label)}"
-      ondragstart="filesDragStart(event,'${esc(f.entryId)}')" ondragend="filesDragEnd()"
+  // Size is unknown for a virtual entry (it isn't a files row), so the subtitle says
+  // what the thing IS instead of padding it with a meaningless 0 B.
+  const sub = f.virtual
+    ? [date, 'Signed agreement'].filter(Boolean).join(' · ')
+    : [date, humanSize(f.file.size)].filter(Boolean).join(' · ');
+
+  // Virtual entries are not draggable and offer only Open — moving or deleting one
+  // would have to act on the agreement, and the endpoint refuses either way.
+  const acts = f.virtual
+    ? `<button class="ico-mini" title="Open" onclick="event.stopPropagation();filesOpen('${esc(f.file.url)}')">${ic('download', 14)}</button>`
+    : `<button class="ico-mini" title="Open" onclick="event.stopPropagation();filesOpen('${esc(f.file.url)}')">${ic('download', 14)}</button>
+      <button class="ico-mini" title="Rename" onclick="event.stopPropagation();renameFilePrompt('${esc(f.entryId)}')">${ic('edit', 14)}</button>
+      <button class="ico-mini danger" title="Delete" onclick="event.stopPropagation();deleteFilePrompt('${esc(f.entryId)}')">${ic('trash', 14)}</button>`;
+
+  const drag = f.virtual ? '' :
+    `draggable="true" ondragstart="filesDragStart(event,'${esc(f.entryId)}')" ondragend="filesDragEnd()"`;
+
+  return `<div class="drive-tile drive-file${f.virtual ? ' drive-linked' : ''}" ${drag} title="${esc(label)}"
       ondblclick="filesOpen('${esc(f.file.url)}')">
-    <div class="dt-thumb">${thumb}</div>
+    <div class="dt-thumb">${thumb}${f.virtual ? `<span class="dt-badge" title="Stored on the agreement">${ic('pen', 11)}</span>` : ''}</div>
     <div class="dt-body">
       <div class="dt-name">${esc(label)}</div>
       <div class="dt-sub">${esc(sub)}</div>
     </div>
-    <div class="dt-acts">
-      <button class="ico-mini" title="Open" onclick="event.stopPropagation();filesOpen('${esc(f.file.url)}')">${ic('download', 14)}</button>
-      <button class="ico-mini" title="Rename" onclick="event.stopPropagation();renameFilePrompt('${esc(f.entryId)}')">${ic('edit', 14)}</button>
-      <button class="ico-mini danger" title="Delete" onclick="event.stopPropagation();deleteFilePrompt('${esc(f.entryId)}')">${ic('trash', 14)}</button>
-    </div>
+    <div class="dt-acts">${acts}</div>
   </div>`;
 }
 
