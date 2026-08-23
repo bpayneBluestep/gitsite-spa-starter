@@ -100,7 +100,7 @@ async function emitHtml(templatePath, outPath, cssName, jsName) {
 // import(); pdf-lib and interact are classic scripts injected on demand. The manifest
 // of hashed names is prepended to both JS bundles as VENDOR so runtime code can find
 // them. The .mjs worker keeps its extension — pdf.js loads it as a module worker.
-const VENDOR_FILES = ['pdf.min.mjs', 'pdf.worker.min.mjs', 'pdf-lib.min.js', 'interact.min.js']
+const VENDOR_FILES = ['pdf.min.mjs', 'pdf.worker.min.mjs', 'pdf-lib.min.js']
 const vendorManifest = {}
 for (const f of VENDOR_FILES) {
   const buf = await readFile(join(root, 'vendor', f))

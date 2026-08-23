@@ -58,17 +58,7 @@ async function runPdfSpike(dlPath: string): Promise<void> {
       log('A5 PASS pdf-lib loaded, drew on page 1, re-saved ' + out.byteLength + ' bytes (' + Math.round(performance.now() - t3) + 'ms)');
     }
 
-    const interact = await loadInteract();
-    const dragEl = document.getElementById('spike-drag');
-    if (dragEl) {
-      let dx = 0, dy = 0;
-      interact(dragEl).draggable({
-        listeners: {
-          move(ev: any) { dx += ev.dx; dy += ev.dy; dragEl.style.transform = `translate(${dx}px,${dy}px)`; },
-        },
-      });
-      log('A6 PASS interact.js loaded — the blue box is draggable');
-    }
+    log('A6 SKIP — interact.js retired (broken minified build); designer uses its own pointer-event engine');
     log('DONE');
   } catch (e: any) {
     log('FAIL ' + (e && e.message ? e.message : String(e)));

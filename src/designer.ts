@@ -248,7 +248,6 @@ function dsgPaintOverlay(pageEl: HTMLElement, docId: string, page: number): void
     el.style.setProperty('--oc', o ? o.color : '#64748b');
     el.innerHTML = `<span class="dsg-tab-label">${esc(t.type === 'checkbox' ? '' : (t.label || GEO_TAB_LABELS[t.type] || t.type))}</span>`;
     geoApplyTabRect(el, t, scale);
-    el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); dsgSelect(t.id); });
     el.addEventListener('click', (ev) => ev.stopPropagation());
     overlay.appendChild(el);
     dsgMakeInteractive(el, t);
@@ -265,42 +264,80 @@ function dsgRepaintAll(): void {
   if (props) props.innerHTML = dsgPropsHtml();
 }
 
-/* ---- interact.js wiring: move + resize with grid snap, clamped to the page ---- */
-async function dsgMakeInteractive(el: HTMLElement, tab: DsgTab): Promise<void> {
-  const interact = await loadInteract();
-  const d = DSG!;
-  interact(el)
-    .draggable({
-      modifiers: [interact.modifiers.snap({ targets: [interact.snappers.grid({ x: 6, y: 6 })], relativePoints: [{ x: 0, y: 0 }] })],
-      listeners: {
-        move(ev: any) {
-          const scale = dsgScaleFor(tab.docId, tab.page);
-          tab.x += geoPxToPt(ev.dx, scale);
-          tab.y += geoPxToPt(ev.dy, scale);
-          const info = dsgPageInfo(tab.docId, tab.page);
-          if (info) geoClampTab(tab, info.wPt, info.hPt);
-          geoApplyTabRect(el, tab, scale);
-        },
-        end() { dsgTouched(); },
-      },
-    })
-    .resizable({
-      edges: { left: true, right: true, bottom: true, top: true },
-      modifiers: [interact.modifiers.restrictSize({ min: { width: 10, height: 10 } })],
-      listeners: {
-        move(ev: any) {
-          const scale = dsgScaleFor(tab.docId, tab.page);
-          tab.w = geoPxToPt(ev.rect.width, scale);
-          tab.h = geoPxToPt(ev.rect.height, scale);
-          tab.x += geoPxToPt(ev.deltaRect.left, scale);
-          tab.y += geoPxToPt(ev.deltaRect.top, scale);
-          const info = dsgPageInfo(tab.docId, tab.page);
-          if (info) geoClampTab(tab, info.wPt, info.hPt);
-          geoApplyTabRect(el, tab, scale);
-        },
-        end() { dsgTouched(); },
-      },
-    });
+/* ---- drag + resize, hand-rolled on pointer events ----
+   interact.js was vendored for this and its minified build turned out to be broken
+   at runtime (scope.interactables never initializes — "interactables.get is not a
+   function" on first use). Move + resize + grid snap + page clamp is ~70 lines with
+   pointer capture, all in the pt-space we already own, so the dependency is gone.
+
+   Behaviour: drag anywhere in the tab moves it; the outer 6px of each edge resizes;
+   positions snap to a 3pt grid on release; everything clamps to the page. */
+const DSG_EDGE = 6;    // px — resize handle thickness
+const DSG_GRID = 3;    // pt — release snap
+
+function dsgMakeInteractive(el: HTMLElement, tab: DsgTab): void {
+  el.addEventListener('pointerdown', function (ev: PointerEvent) {
+    if (ev.button !== 0) return;
+    ev.preventDefault(); ev.stopPropagation();
+    dsgSelect(tab.id);
+    const scale = dsgScaleFor(tab.docId, tab.page);
+    const rect = el.getBoundingClientRect();
+    const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+    // Which edges is the pointer within DSG_EDGE px of? None = move.
+    const edges = {
+      l: px <= DSG_EDGE, r: px >= rect.width - DSG_EDGE,
+      t: py <= DSG_EDGE, b: py >= rect.height - DSG_EDGE,
+    };
+    const resizing = edges.l || edges.r || edges.t || edges.b;
+    const start = { x: tab.x, y: tab.y, w: tab.w, h: tab.h, cx: ev.clientX, cy: ev.clientY };
+    const info = dsgPageInfo(tab.docId, tab.page);
+    let moved = false;
+
+    const onMove = (mv: PointerEvent) => {
+      const dxPt = geoPxToPt(mv.clientX - start.cx, scale);
+      const dyPt = geoPxToPt(mv.clientY - start.cy, scale);
+      if (Math.abs(dxPt) + Math.abs(dyPt) > 0.5) moved = true;
+      if (!resizing) {
+        tab.x = start.x + dxPt; tab.y = start.y + dyPt;
+      } else {
+        if (edges.r) tab.w = Math.max(8, start.w + dxPt);
+        if (edges.b) tab.h = Math.max(8, start.h + dyPt);
+        if (edges.l) { const w2 = Math.max(8, start.w - dxPt); tab.x = start.x + (start.w - w2); tab.w = w2; }
+        if (edges.t) { const h2 = Math.max(8, start.h - dyPt); tab.y = start.y + (start.h - h2); tab.h = h2; }
+      }
+      if (info) geoClampTab(tab, info.wPt, info.hPt);
+      geoApplyTabRect(el, tab, scale);
+    };
+    const onUp = () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+      if (moved) {
+        // snap on release, not during — dragging feels 1:1, results line up
+        tab.x = Math.round(tab.x / DSG_GRID) * DSG_GRID;
+        tab.y = Math.round(tab.y / DSG_GRID) * DSG_GRID;
+        tab.w = Math.round(tab.w / DSG_GRID) * DSG_GRID;
+        tab.h = Math.round(tab.h / DSG_GRID) * DSG_GRID;
+        if (info) geoClampTab(tab, info.wPt, info.hPt);
+        geoApplyTabRect(el, tab, scale);
+        dsgTouched();
+      }
+    };
+    el.setPointerCapture(ev.pointerId);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+  });
+
+  // Resize affordance: show the right cursor near edges.
+  el.addEventListener('pointermove', function (ev: PointerEvent) {
+    if ((ev as any).buttons) return; // mid-gesture — capture handler owns it
+    const rect = el.getBoundingClientRect();
+    const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+    const l = px <= DSG_EDGE, r = px >= rect.width - DSG_EDGE, t = py <= DSG_EDGE, b = py >= rect.height - DSG_EDGE;
+    el.style.cursor = (l && t) || (r && b) ? 'nwse-resize' : (r && t) || (l && b) ? 'nesw-resize'
+      : l || r ? 'ew-resize' : t || b ? 'ns-resize' : 'move';
+  });
 }
 
 /* ---- interactions ---- */

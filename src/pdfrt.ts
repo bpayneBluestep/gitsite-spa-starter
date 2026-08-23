@@ -63,9 +63,6 @@ function loadPdfLib(): Promise<any> {
   return loadClassicScript('pdf-lib.min.js').then(() => (window as any).PDFLib);
 }
 
-function loadInteract(): Promise<any> {
-  return loadClassicScript('interact.min.js').then(() => (window as any).interact);
-}
 
 /* Render one page of a PDF into a canvas at a given CSS-pixel width.
    Shared by thumbnails, the designer and the signing view — one code path for
