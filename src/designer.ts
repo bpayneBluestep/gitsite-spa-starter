@@ -65,7 +65,7 @@ function viewDesigner(parts: string[]): string {
   if (!DSG || DSG.entryId !== entryId) {
     DSG = {
       mode: mode, cid: cid, entryId: entryId, title: '', docs: [], tabs: [], owners: [],
-      activeOwner: '', armedType: '', selected: '', zoom: 1,
+      activeOwner: '', armedType: '', selected: '', zoom: 0, // 0 = fit-to-width, computed on first mount
       loading: true, error: '', dirty: false, saving: false, pages: [], clipboard: null,
     };
     dsgLoad();
@@ -120,7 +120,8 @@ function dsgView(): string {
       title="Click, then click the page to place">${esc(GEO_TAB_LABELS[t] || t)}</button>`).join('');
 
   const zooms = [0.5, 0.75, 1, 1.25, 1.5, 2];
-  const zoomBtns = zooms.map(z => `<button class="btn ghost sm ${d.zoom === z ? 'dsg-z-on' : ''}" onclick="dsgZoom(${z})">${z * 100}%</button>`).join('');
+  const zoomBtns = `<button class="btn ghost sm" onclick="dsgZoomFit()" title="Fit the page to the window">Fit</button>`
+    + zooms.map(z => `<button class="btn ghost sm ${Math.abs(d.zoom - z) < 0.01 ? 'dsg-z-on' : ''}" onclick="dsgZoom(${z})">${z * 100}%</button>`).join('');
 
   const pages = d.docs.map(doc => {
     const n = Math.max(1, doc.pages || 1);
@@ -187,6 +188,18 @@ function dsgPropsHtml(): string {
 /* ---- page mounting: render canvases + overlays after the DOM exists ---- */
 async function dsgMountPages(): Promise<void> {
   const d = DSG; if (!d || d.loading) return;
+  // zoom 0 is the fit-to-width sentinel: measure the scroll container once the DOM
+  // exists, pick the zoom that fills it, and re-render. The designer owns the full
+  // viewport width (.content:has(.dsg-layout) lifts the app's 1080px cap), so "fit"
+  // means the page actually uses the screen instead of a letterboxed strip.
+  if (d.zoom === 0) {
+    const sc = document.getElementById('dsg-scroll');
+    if (!sc) return;
+    const avail = sc.clientWidth - 48; // scroll padding
+    d.zoom = Math.max(0.5, Math.min(2, Math.round((avail / DSG_BASE_W) * 20) / 20));
+    render();
+    return;
+  }
   const pageEls = document.querySelectorAll('.dsg-page');
   const byUrl: { [url: string]: any } = {};
   for (let i = 0; i < pageEls.length; i++) {
@@ -331,7 +344,15 @@ function dsgPageClick(ev: MouseEvent, docId: string, page: number): void {
 
 function dsgSelect(id: string): void {
   const d = DSG!; d.selected = id; d.armedType = '';
-  dsgRepaintAll();
+  // IN PLACE, never a repaint: this runs on mousedown, and rebuilding the overlay
+  // here destroys the element interact.js is about to drag — which presented as
+  // "drag doesn't work at all". Selection is a class toggle plus a panel refresh.
+  const els = document.querySelectorAll('.dsg-tab.selected');
+  for (let i = 0; i < els.length; i++) els[i].classList.remove('selected');
+  const el = document.querySelector('[data-tab="' + id + '"]');
+  if (el) el.classList.add('selected');
+  const props = document.getElementById('dsg-props');
+  if (props) props.innerHTML = dsgPropsHtml();
 }
 
 function dsgProp(key: string, val: any): void {
@@ -340,7 +361,11 @@ function dsgProp(key: string, val: any): void {
   if (!t) return;
   (t as any)[key] = val;
   dsgTouched();
-  if (key === 'recipientId') dsgRepaintAll();
+  if (key === 'recipientId') {
+    const el = document.querySelector('[data-tab="' + t.id + '"]') as HTMLElement | null;
+    const o = d.owners.find(x => x.id === val);
+    if (el && o) el.style.setProperty('--oc', o.color);
+  }
 }
 
 function dsgPropOptions(text: string): void {
@@ -378,6 +403,12 @@ function dsgZoom(z: number): void {
   const d = DSG!;
   d.zoom = z;
   d.pages = []; // page px sizes change; pt sizes are re-reported on render
+  render();
+}
+
+function dsgZoomFit(): void {
+  const d = DSG!;
+  d.zoom = 0; d.pages = [];
   render();
 }
 

@@ -234,6 +234,7 @@
 /* The directory is a wide data table — give this page more room than the
    default 1080px content column (scoped via the always-present search box). */
 .content:has(#prog-search){max-width:1360px}
+.content:has(.dsg-layout){max-width:none}
 /* Compact directory table */
 .prog-table-card{padding:0;overflow:hidden}
 .prog-table-scroll{overflow-x:auto}
