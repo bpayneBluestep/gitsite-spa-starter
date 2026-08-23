@@ -238,7 +238,6 @@
   /* ── boot ─────────────────────────────────────────────────────────────────── */
   if (!meta.clientid || !meta.logid || !meta.token) setRoot(gateMessage('badtoken'));
   else load();
-})();
 
 /* ---- v3 envelope flow — the shared signview does the heavy lifting ---- */
 function renderEnvelopeSign(d: any): void {
@@ -281,3 +280,5 @@ function renderEnvelopeSign(d: any): void {
     },
   });
 }
+
+})();
