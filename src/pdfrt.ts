@@ -26,19 +26,27 @@ declare const VENDOR: { [file: string]: string };
 let PDFJS_P: Promise<any> | null = null;
 let SCRIPT_P: { [src: string]: Promise<void> } = {};
 
+// Resolve a manifest path against the PAGE url, explicitly. A dynamic import()
+// inside a classic script resolves relative to the SCRIPT's url (per spec), so a
+// bare './assets/x' from /spa/assets/app.js becomes /spa/assets/assets/x — measured,
+// not theoretical. new URL against location.href pins everything to /spa/.
+function vendorUrl(file: string): string {
+  return new URL(VENDOR[file], location.href.split('#')[0]).href;
+}
+
 /* pdf.js, initialised with its module worker. Returns the pdfjsLib namespace. */
 function loadPdfJs(): Promise<any> {
   if (PDFJS_P) return PDFJS_P;
   const dynImport = new Function('u', 'return import(u)') as (u: string) => Promise<any>;
-  PDFJS_P = dynImport('./' + VENDOR['pdf.min.mjs']).then((lib: any) => {
-    lib.GlobalWorkerOptions.workerSrc = './' + VENDOR['pdf.worker.min.mjs'];
+  PDFJS_P = dynImport(vendorUrl('pdf.min.mjs')).then((lib: any) => {
+    lib.GlobalWorkerOptions.workerSrc = vendorUrl('pdf.worker.min.mjs');
     return lib;
   });
   return PDFJS_P;
 }
 
 function loadClassicScript(file: string): Promise<void> {
-  const src = './' + VENDOR[file];
+  const src = vendorUrl(file);
   const existing = SCRIPT_P[src];
   if (existing) return existing;
   SCRIPT_P[src] = new Promise<void>((resolve, reject) => {
