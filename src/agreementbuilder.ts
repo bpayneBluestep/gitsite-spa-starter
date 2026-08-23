@@ -58,7 +58,7 @@ function tplListView(): string {
 
 function tplNew(): void {
   TPL.editing = {
-    entryId: null, name: '', description: '', status: 'Draft', category: 'Admissions',
+    entryId: null, name: '', description: '', status: 'Draft', category: 'Other',
     bodyJson: { schemaVersion: 3, documents: [], roles: [], tabs: [], anchors: [] },
   };
   render();
@@ -83,7 +83,9 @@ async function tplArchive(entryId: string): Promise<void> {
 
 function tplEditor(t: any): string {
   const b = t.bodyJson;
-  const cats = ['Admissions', 'Financial', 'Medical', 'Consent / ROI', 'Other'];
+  // These are the platform option list's values ("Agreement Category") — the field
+  // rejects anything else, and there is no MCP for this org to extend the list.
+  const cats = ['Engagement Letter', 'Fee Agreement', 'Consent / ROI', 'Other'];
   const catOpts = cats.map(x => `<option value="${esc(x)}"${t.category === x ? ' selected' : ''}>${esc(x)}</option>`).join('');
   const statuses = ['Draft', 'Active', 'Archived'];
   const stOpts = statuses.map(x => `<option value="${esc(x)}"${t.status === x ? ' selected' : ''}>${esc(x)}</option>`).join('');
