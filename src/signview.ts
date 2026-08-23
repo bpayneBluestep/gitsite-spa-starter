@@ -62,8 +62,11 @@ async function svRenderPages(): Promise<void> {
     const pageNum = Number(el.getAttribute('data-page')) || 1;
     const canvas = el.querySelector('canvas') as HTMLCanvasElement;
     try {
-      if (!byUrl[url]) byUrl[url] = await pdfOpen(url);
-      const dims = await pdfRenderPage(byUrl[url], pageNum, canvas, width);
+      const docMeta = (host.env.documents || []).find((d: any) => d.id === docId);
+      const key = url || docId;
+      if (!byUrl[key]) byUrl[key] = docMeta && docMeta.dataB64 ? await pdfOpenData(docMeta.dataB64) : await pdfOpen(url);
+      if (key !== url) { /* keyed by docId when embedded */ }
+      const dims = await pdfRenderPage(byUrl[url || docId], pageNum, canvas, width);
       SV_PAGES.push({ docId: docId, page: pageNum, wPt: dims.wPt, hPt: dims.hPt });
       el.style.width = canvas.style.width; el.style.height = canvas.style.height;
       svPaintOverlay(el, docId, pageNum, width);

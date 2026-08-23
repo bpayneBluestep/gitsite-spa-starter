@@ -88,3 +88,13 @@ async function pdfOpen(url: string): Promise<any> {
   const lib = await loadPdfJs();
   return lib.getDocument({ url: url, withCredentials: true }).promise;
 }
+
+/* Open a document from base64 bytes (the anonymous signing page gets its PDFs
+   embedded in the token-gated load response — /download/ needs a session). */
+async function pdfOpenData(b64: string): Promise<any> {
+  const lib = await loadPdfJs();
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return lib.getDocument({ data: u8 }).promise;
+}
