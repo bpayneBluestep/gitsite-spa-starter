@@ -75,6 +75,9 @@ async function geoAnchorTabs(pdf: any, docId: string, rules: any[],
   slotMap: (slot: string) => string | null): Promise<any[]> {
   const out: any[] = [];
   if (!rules || !rules.length) return out;
+  // rule.occurrence (1-based, optional): place on only the Nth match in the document
+  // — lets one repeated phrase ("Sponsor Signature:") feed different role slots.
+  const seen: number[] = rules.map(() => 0);
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const pageH = page.getViewport({ scale: 1 }).height;
@@ -95,11 +98,14 @@ async function geoAnchorTabs(pdf: any, docId: string, rules: any[],
         spans.push({ start: lineStr.length, x: it.transform[4], w: it.width, h: it.height || Math.abs(it.transform[3]) || 11, len: it.str.length });
         lineStr += it.str;
       }
-      for (const rule of rules) {
+      for (let ri = 0; ri < rules.length; ri++) {
+        const rule = rules[ri];
         if (!rule || !rule.matchText) continue;
         let from = 0, idx: number;
         while ((idx = lineStr.indexOf(rule.matchText, from)) >= 0) {
           from = idx + rule.matchText.length;
+          seen[ri]++;
+          if (rule.occurrence && seen[ri] !== Number(rule.occurrence)) continue;
           const rid = slotMap(String(rule.roleSlot || ''));
           if (!rid) continue;
           const sp = spans.find(s2 => idx >= s2.start && idx < s2.start + s2.len) || spans[0];

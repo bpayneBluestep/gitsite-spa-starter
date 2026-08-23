@@ -619,6 +619,7 @@ function dsgAnchorsCard(): string {
       <div class="dsg-anchor-row">
         <input id="dsg-an-dx" type="number" value="100" title="dx (pt right of the text)"> <span class="meta">dx</span>
         <input id="dsg-an-dy" type="number" value="0" title="dy (pt down)"> <span class="meta">dy</span>
+        <input id="dsg-an-occ" type="number" min="0" value="0" title="Only the Nth occurrence (0 = every occurrence)"> <span class="meta">occ</span>
       </div>
       <button class="btn outline sm" onclick="dsgAnchorAdd()">${ic('plus', 13)} Add rule</button>
     </div>
@@ -636,6 +637,7 @@ function dsgAnchorAdd(): void {
     roleSlot: g('dsg-an-slot') ? g('dsg-an-slot')!.value : '',
     dx: Number(g('dsg-an-dx') ? g('dsg-an-dx')!.value : 0) || 0,
     dy: Number(g('dsg-an-dy') ? g('dsg-an-dy')!.value : 0) || 0,
+    occurrence: Number(g('dsg-an-occ') ? g('dsg-an-occ')!.value : 0) || 0,
     required: true,
   });
   dsgTouched();
