@@ -65,7 +65,10 @@
 .sg-sig-box:focus-visible { outline: 2px solid var(--sg-focus); outline-offset: 2px }
 
 .sg-sig-wrap { display: inline-flex; align-items: flex-end; gap: 8px }
-.sg-sig-img { max-height: 52px; max-width: 260px; vertical-align: bottom }
+/* 44px matches the height the PDF renderer is given, so the signature you approve on
+   screen is the size that ends up in the document. width:auto keeps the aspect ratio
+   of the cropped PNG that sigNormalize produces. */
+.sg-sig-img { height: 44px; width: auto; max-width: 260px; vertical-align: bottom }
 .sg-sig-other { opacity: .95 }
 .sg-sig-redo {
   font: inherit; font-size: 11px; color: var(--sg-quiet);

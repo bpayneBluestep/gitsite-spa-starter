@@ -412,6 +412,84 @@ async function sigRasterizeTyped(name: string, cssFont: string): Promise<string>
   return c.toDataURL('image/png');
 }
 
+/* Normalise a signature image before it is ever submitted.
+
+   Two problems this solves, both of which showed up as enormous signatures in the
+   signed PDF:
+
+   1. The images were huge. The typed rasteriser draws at 64px scaled by
+      devicePixelRatio, and the draw pad is a 560x150 canvas at the same ratio — up to
+      1680x450px. The PDF renderer honours neither max-height nor max-width, so it drew
+      them at intrinsic size: ten inches wide on a 6.5in page.
+   2. The draw pad's canvas is mostly empty. A signature scribbled in the middle of it
+      carries a wide transparent margin, so even scaled correctly it floated in space
+      instead of sitting on the line.
+
+   So: crop to the actual ink, then scale to fit a fixed box. Every signature leaves
+   here at most SIG_OUT_W x SIG_OUT_H, which means the PDF is correct even if every
+   piece of CSS is ignored. Rendering at 2x the display size keeps it crisp when the
+   PDF is zoomed or printed. */
+const SIG_OUT_W = 440;
+const SIG_OUT_H = 88;
+
+function sigNormalize(dataUrl: string): Promise<string> {
+  return new Promise(function (resolve) {
+    if (!dataUrl) { resolve(''); return; }
+    const img = new Image();
+    img.onerror = function () { resolve(dataUrl); };
+    img.onload = function () {
+      try {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (!w || !h) { resolve(dataUrl); return; }
+
+        const src = document.createElement('canvas');
+        src.width = w; src.height = h;
+        const sctx = src.getContext('2d');
+        if (!sctx) { resolve(dataUrl); return; }
+        sctx.drawImage(img, 0, 0);
+
+        // Ink bounds. Alpha > 8 ignores the anti-aliased ghost around a stroke.
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        try {
+          const d = sctx.getImageData(0, 0, w, h).data;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              if (d[(y * w + x) * 4 + 3] > 8) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+          }
+        } catch (_e) { /* getImageData unavailable — fall through to the full frame */ }
+        if (maxX < 0) { minX = 0; minY = 0; maxX = w - 1; maxY = h - 1; }
+
+        const pad = 3;
+        minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+        maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+        const cw = maxX - minX + 1;
+        const ch = maxY - minY + 1;
+
+        // Fit the box. Clamped so a tiny scribble is not blown up into a blur.
+        let scale = Math.min(SIG_OUT_W / cw, SIG_OUT_H / ch);
+        if (scale > 2) scale = 2;
+        const ow = Math.max(1, Math.round(cw * scale));
+        const oh = Math.max(1, Math.round(ch * scale));
+
+        const out = document.createElement('canvas');
+        out.width = ow; out.height = oh;
+        const octx = out.getContext('2d');
+        if (!octx) { resolve(dataUrl); return; }
+        octx.drawImage(src, minX, minY, cw, ch, 0, 0, ow, oh);
+        resolve(out.toDataURL('image/png'));
+      } catch (_e) { resolve(dataUrl); }
+    };
+    img.src = dataUrl;
+  });
+}
+
 async function sigModalAdopt(): Promise<void> {
   sigModalErr('');
   const modal = document.getElementById('__sgModal');
@@ -425,7 +503,7 @@ async function sigModalAdopt(): Promise<void> {
     if (!name) { sigModalErr('Type your full name to adopt a signature.'); return; }
     const url = await sigRasterizeTyped(name, SIG_FONTS[SIG_MODAL_FONT].css);
     if (!url) { sigModalErr('Could not create the signature image. Try the Draw tab.'); return; }
-    SIG_ADOPTED = { dataUrl: url, typedName: name };
+    SIG_ADOPTED = { dataUrl: await sigNormalize(url), typedName: name };
   } else {
     if (!SIG_MODAL_PAD || !SIG_MODAL_PAD.isDrawn()) { sigModalErr('Draw your signature first.'); return; }
     // A drawn signature still needs a typed name — {{name:}} and the certificate
@@ -433,7 +511,7 @@ async function sigModalAdopt(): Promise<void> {
     // on which tab they used.
     const el = document.getElementById('__sgName') as HTMLInputElement | null;
     const name = el && el.value.trim() ? el.value.trim() : '';
-    SIG_ADOPTED = { dataUrl: SIG_MODAL_PAD.dataUrl(), typedName: name };
+    SIG_ADOPTED = { dataUrl: await sigNormalize(SIG_MODAL_PAD.dataUrl()), typedName: name };
   }
   sigCloseModal();
   if (SIG_ON_CHANGE) SIG_ON_CHANGE();
