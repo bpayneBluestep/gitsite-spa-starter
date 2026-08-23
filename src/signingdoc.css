@@ -217,3 +217,9 @@
 .sv-progress{font-size:12.5px;color:#4b5563;flex:1}
 .env-sign-card{width:min(960px,96vw);max-height:94vh;display:flex;flex-direction:column}
 .env-sign-card .modal-body{overflow:auto}
+
+/* ===== phase 4: read-only envelope view + decline ===== */
+.sv-ro-mode .sv-bar{display:none}
+.sg-declinerow{text-align:center;margin:8px 0 26px}
+.sg-declineline{background:none;border:0;color:#9aa3ad;text-decoration:underline;cursor:pointer;font-size:12.5px}
+.sg-declineline:hover{color:#b3261e}

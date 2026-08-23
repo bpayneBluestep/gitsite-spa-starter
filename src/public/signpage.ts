@@ -54,6 +54,8 @@
       complete: ['Already completed', 'This agreement has already been fully signed. Thank you!'],
       alreadysigned: ['Already signed', 'You have already signed this document. Thank you!'],
       unconfigured: ['Not ready', 'This document is not ready to sign yet. Please contact the sender.'],
+      notyourturn: ['Not your turn yet', 'These documents are signed in order, and an earlier signer has not finished yet. You will receive an email the moment it is your turn.'],
+      expired: ['Expired', 'This signature request expired before all parties signed. Please contact the sender for a new one.'],
     };
     var m = map[gate] || ['Unavailable', 'This signing link cannot be opened.'];
     return '<div class="sg-msg"><h2>' + sigEsc(m[0]) + '</h2><p>' + sigEsc(m[1]) + '</p></div>';
@@ -239,24 +241,40 @@
   if (!meta.clientid || !meta.logid || !meta.token) setRoot(gateMessage('badtoken'));
   else load();
 
-/* ---- v3 envelope flow — the shared signview does the heavy lifting ---- */
+/* ---- v3 envelope flow — the shared signview does the heavy lifting ----
+   Read-only when the envelope is completed (adds a PDF download) or when this
+   signer already signed (waiting on others). Live signers also get a decline
+   path — phase 4. */
 function renderEnvelopeSign(d: any): void {
   if (!root) return;
   var me = d.me || {};
+  var readOnly = !!(d.completed || d.mySigned);
+  var headMsg = d.completed
+    ? 'All parties have signed. Review the documents below, or download the completed PDF.'
+    : d.mySigned
+      ? 'You have signed — waiting on the remaining signers. You\'ll receive the completed PDF by email when everyone has finished.'
+      : (me.name ? 'Please review and complete your fields, ' + sigEsc(me.name) + '.' : 'Please review and sign.');
   setRoot(
-    '<div class="sg-wrap sv-wrap">'
+    '<div class="sg-wrap sv-wrap' + (readOnly ? ' sv-ro-mode' : '') + '">'
     + '<div class="sg-head">'
     + (d.orgName ? '<div class="sg-org">' + sigEsc(d.orgName) + '</div>' : '')
     + '<h1>' + sigEsc(d.title) + '</h1>'
-    + '<p class="sg-hi">' + (me.name ? 'Please review and complete your fields, ' + sigEsc(me.name) + '.' : 'Please review and sign.') + '</p>'
+    + '<p class="sg-hi">' + headMsg + '</p>'
+    + (d.completed ? '<p><button type="button" class="sg-btn primary" id="sg-envpdf">Download completed PDF</button></p>' : '')
     + '</div>'
     + '<div id="sv-host"></div>'
-    + '<label class="sg-consent"><input type="checkbox" id="sg-consent" onchange="svUpdateProgress()"> I agree to sign these documents electronically, and that my electronic signature is legally binding.</label>'
+    + (readOnly ? ''
+      : '<label class="sg-consent"><input type="checkbox" id="sg-consent" onchange="svUpdateProgress()"> I agree to sign these documents electronically, and that my electronic signature is legally binding.</label>'
+        + '<p class="sg-declinerow"><button type="button" class="sg-declineline" id="sg-envdecline">Decline to sign</button></p>')
     + '</div>');
+  var pdfBtn = document.getElementById('sg-envpdf');
+  if (pdfBtn) pdfBtn.onclick = envPdfDownload;
+  var decBtn = document.getElementById('sg-envdecline');
+  if (decBtn) decBtn.onclick = envDeclineFlow;
   svMount({
     container: document.getElementById('sv-host')!,
     env: d,
-    meId: me.id || '',
+    meId: readOnly ? '' : (me.id || ''),
     submit: function (p) {
       var consent = document.getElementById('sg-consent');
       if (!consent || !(consent as HTMLInputElement).checked) { return Promise.reject(new Error('Please check the consent box to sign.')); }
@@ -279,6 +297,46 @@ function renderEnvelopeSign(d: any): void {
         + '</p></div></div>');
     },
   });
+}
+
+/* Completed-envelope PDF: the bytes ride a token-gated response (the anonymous
+   /download wall), then save via a blob link. */
+function envPdfDownload(): void {
+  var btn = document.getElementById('sg-envpdf') as HTMLButtonElement | null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  var restore = function () { if (btn) { btn.disabled = false; btn.textContent = 'Download completed PDF'; } };
+  fetch(INGESTER, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'pdf', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.ok || !j.data || !j.data.dataB64) throw new Error((j && j.error) || 'The PDF isn\'t ready yet — try again shortly.');
+      var bin = atob(j.data.dataB64);
+      var u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+      a.download = j.data.filename || 'completed-documents.pdf';
+      a.click();
+      restore();
+    })
+    .catch(function (e) { restore(); alert(e && e.message ? e.message : String(e)); });
+}
+
+function envDeclineFlow(): void {
+  var reason = prompt('Decline to sign these documents?\nThe sender will be notified. Reason (optional):', '');
+  if (reason == null) return;
+  fetch(INGESTER, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'decline', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token, reason: reason }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || 'Could not record the decline.');
+      setRoot('<div class="sg-msg"><h2>Declined</h2><p>You have declined to sign. The sender has been notified.</p></div>');
+    })
+    .catch(function (e) { alert(e && e.message ? e.message : String(e)); });
 }
 
 })();

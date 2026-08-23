@@ -50,6 +50,8 @@ interface DsgState {
   saving: boolean;
   pages: GeoPage[];       // filled as pdf.js reports real page sizes
   clipboard: DsgTab | null;
+  correcting: boolean;              // env is Sent/Partially Signed (phase-4 correction)
+  locked: { [rid: string]: boolean }; // recipients who already signed — their tabs are immutable
 }
 
 let DSG: DsgState | null = null;
@@ -67,6 +69,7 @@ function viewDesigner(parts: string[]): string {
       mode: mode, cid: cid, entryId: entryId, title: '', docs: [], tabs: [], owners: [],
       activeOwner: '', armedType: '', selected: '', zoom: 0, // 0 = fit-to-width, computed on first mount
       loading: true, error: '', dirty: false, saving: false, pages: [], clipboard: null,
+      correcting: false, locked: {},
     };
     dsgLoad();
   }
@@ -79,7 +82,14 @@ async function dsgLoad(): Promise<void> {
   try {
     if (d.mode === 'env') {
       const env = await apiGetEnvelope(d.cid, d.entryId);
-      if (env.status !== 'Draft') { d.error = 'Only Draft envelopes can be designed.'; d.loading = false; render(); return; }
+      // Draft: normal designing. Sent/Partially Signed: a CORRECTION — allowed, with
+      // signed recipients' fields locked (the server enforces the same rule).
+      if (env.status !== 'Draft' && env.status !== 'Sent' && env.status !== 'Partially Signed') {
+        d.error = 'This envelope is ' + env.status + ' and can no longer be edited.'; d.loading = false; render(); return;
+      }
+      d.correcting = env.status !== 'Draft';
+      d.locked = {};
+      for (const r of (env.recipients || [])) { if (r.status === 'signed') d.locked[r.id] = true; }
       d.title = env.title;
       d.docs = (env.documents || []).slice().sort((a: EnvDoc, b: EnvDoc) => a.order - b.order);
       d.tabs = env.tabs || [];
@@ -97,7 +107,8 @@ async function dsgLoad(): Promise<void> {
       d.owners = roles.map((r: any, i: number) => ({ id: r.id, name: r.name || r.label || 'Role', color: geoRecipientColor(i) }));
     }
     if (!d.owners.length) { d.error = d.mode === 'env' ? 'Add at least one signing recipient before placing fields.' : 'Add a role first.'; }
-    d.activeOwner = d.owners.length ? d.owners[0].id : '';
+    const firstUnlocked = d.owners.find(o => !d.locked[o.id]);
+    d.activeOwner = firstUnlocked ? firstUnlocked.id : (d.owners.length ? d.owners[0].id : '');
     d.loading = false;
   } catch (e: any) { d.error = e && e.message ? e.message : String(e); d.loading = false; }
   render();
@@ -111,9 +122,9 @@ function dsgView(): string {
     <button class="btn ghost" onclick="dsgBack()">${ic('chevL', 14)} Back</button>`;
 
   const ownerBtns = d.owners.map(o => `
-    <button class="dsg-owner ${d.activeOwner === o.id ? 'active' : ''}" style="--oc:${o.color}"
-      onclick="dsgSetOwner('${esc(o.id)}')" title="New fields are assigned to ${esc(o.name)}">
-      <span class="dsg-owner-dot"></span>${esc(o.name)}</button>`).join('');
+    <button class="dsg-owner ${d.activeOwner === o.id ? 'active' : ''}${d.locked[o.id] ? ' locked' : ''}" style="--oc:${o.color}"
+      onclick="dsgSetOwner('${esc(o.id)}')" title="${d.locked[o.id] ? esc(o.name) + ' has already signed — their fields are locked' : 'New fields are assigned to ' + esc(o.name)}">
+      <span class="dsg-owner-dot"></span>${esc(o.name)}${d.locked[o.id] ? ' 🔒' : ''}</button>`).join('');
 
   const palette = Object.keys(GEO_TAB_DEFAULTS).map(t => `
     <button class="dsg-pal ${d.armedType === t ? 'armed' : ''}" onclick="dsgPalClick('${t}')"
@@ -138,6 +149,7 @@ function dsgView(): string {
   }).join('');
 
   return `${crumb([{ t: 'Agreements' }, { t: d.title }, { t: 'Place fields' }])}
+    ${d.correcting ? `<div class="env-correct-note">${ic('edit', 14)} Correcting a sent envelope — fields of recipients who already signed are locked.</div>` : ''}
     <div class="page-head"><div><h1>Place fields</h1>
       <p>${d.armedType ? `Click the page to place a <b>${esc(GEO_TAB_LABELS[d.armedType])}</b> for <b>${esc((d.owners.find(o => o.id === d.activeOwner) || { name: '?' }).name)}</b> — Esc to cancel.` : 'Pick a field type, then click the page. Drag to move, edges to resize, arrows to nudge.'}</p></div>
       <div>
@@ -169,7 +181,12 @@ function dsgPropsHtml(): string {
   const d = DSG!;
   const t = d.tabs.find(x => x.id === d.selected);
   if (!t) return `<div class="agb-side-h">Selected field</div><p class="meta">Click a placed field to edit it.</p>`;
-  const owner = d.owners.map(o => `<option value="${esc(o.id)}"${t.recipientId === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+  if (d.locked[t.recipientId]) {
+    const lockedOwner = d.owners.find(o => o.id === t.recipientId);
+    return `<div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
+      <p class="meta">${esc(lockedOwner ? lockedOwner.name : 'This recipient')} has already signed — this field can't be changed by a correction.</p>`;
+  }
+  const owner = d.owners.filter(o => !d.locked[o.id]).map(o => `<option value="${esc(o.id)}"${t.recipientId === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
   const needsOpts = t.type === 'radioGroup' || t.type === 'dropdown';
   const auto = t.type === 'dateSigned' || t.type === 'name';
   return `<div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
@@ -243,15 +260,16 @@ function dsgPaintOverlay(pageEl: HTMLElement, docId: string, page: number): void
   for (const t of d.tabs) {
     if (t.docId !== docId || t.page !== page) continue;
     const o = d.owners.find(x => x.id === t.recipientId);
+    const lockedT = !!d.locked[t.recipientId];
     const el = document.createElement('div');
-    el.className = 'dsg-tab' + (d.selected === t.id ? ' selected' : '');
+    el.className = 'dsg-tab' + (d.selected === t.id ? ' selected' : '') + (lockedT ? ' locked' : '');
     el.setAttribute('data-tab', t.id);
     el.style.setProperty('--oc', o ? o.color : '#64748b');
     el.innerHTML = `<span class="dsg-tab-label">${esc(t.type === 'checkbox' ? '' : (t.label || GEO_TAB_LABELS[t.type] || t.type))}</span>`;
     geoApplyTabRect(el, t, scale);
     el.addEventListener('click', (ev) => ev.stopPropagation());
     overlay.appendChild(el);
-    dsgMakeInteractive(el, t);
+    if (!lockedT) dsgMakeInteractive(el, t);
   }
 }
 
@@ -343,7 +361,9 @@ function dsgMakeInteractive(el: HTMLElement, tab: DsgTab): void {
 
 /* ---- interactions ---- */
 function dsgSetOwner(id: string): void {
-  const d = DSG!; d.activeOwner = id;
+  const d = DSG!;
+  if (d.locked[id]) { toast('That recipient has already signed — new fields can\'t be assigned to them.'); return; }
+  d.activeOwner = id;
   const t = d.tabs.find(x => x.id === d.selected);
   if (t) { t.recipientId = id; dsgTouched(); }
   render();
@@ -460,6 +480,8 @@ function dsgProp(key: string, val: any): void {
   const d = DSG!;
   const t = d.tabs.find(x => x.id === d.selected);
   if (!t) return;
+  if (d.locked[t.recipientId]) return;
+  if (key === 'recipientId' && d.locked[String(val)]) { toast('That recipient has already signed.'); return; }
   (t as any)[key] = val;
   dsgTouched();
   if (key === 'recipientId') {
@@ -481,6 +503,7 @@ function dsgDuplicate(): void {
   const d = DSG!;
   const t = d.tabs.find(x => x.id === d.selected);
   if (!t) return;
+  if (d.locked[t.recipientId]) { toast('Locked — that recipient has already signed.'); return; }
   const copy: DsgTab = JSON.parse(JSON.stringify(t));
   copy.id = 't_' + Math.random().toString(36).slice(2, 10);
   copy.x += 12; copy.y += 12;
@@ -494,6 +517,8 @@ function dsgDuplicate(): void {
 
 function dsgDelete(): void {
   const d = DSG!;
+  const sel = d.tabs.find(x => x.id === d.selected);
+  if (sel && d.locked[sel.recipientId]) { toast('Locked — that recipient has already signed.'); return; }
   d.tabs = d.tabs.filter(x => x.id !== d.selected);
   d.selected = '';
   dsgTouched();
@@ -541,9 +566,11 @@ document.addEventListener('keydown', function (ev: KeyboardEvent) {
   const t = d.tabs.find(x => x.id === d.selected);
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); dsgFlushSave(); return; }
   if (!t) return;
+  if (d.locked[t.recipientId]) return; // signed recipients' fields are immutable
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') { d.clipboard = JSON.parse(JSON.stringify(t)); return; }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') {
     if (!d.clipboard) return;
+    if (d.locked[d.clipboard.recipientId]) return;
     const copy: DsgTab = JSON.parse(JSON.stringify(d.clipboard));
     copy.id = 't_' + Math.random().toString(36).slice(2, 10);
     copy.x += 12; copy.y += 12;

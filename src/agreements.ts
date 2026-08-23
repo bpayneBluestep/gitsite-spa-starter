@@ -25,12 +25,15 @@ interface EnvRecipient {
   kind: 'external' | 'consultant' | 'inperson' | 'cc';
   routingOrder: number; status: string; signedAt: string;
   typedName: string; signatureData: string; tabValues: Record<string, any>; hasToken: boolean;
+  notifiedAt?: string; viewedAt?: string; declinedAt?: string; declineReason?: string;
 }
 interface Envelope {
   entryId: string; schemaVersion: number; title: string; status: string;
   sentAt: string; completedAt: string; voidReason: string; createdBy: string; createdAt: string;
   signedPdf: string; documents: EnvDoc[]; tabs: any[]; anchors: any[];
   recipients: EnvRecipient[]; audit: any[];
+  routing?: string; expiresAt?: string; expireDays?: number; remindEveryDays?: number;
+  activeOrder?: number; senderName?: string;
 }
 
 interface EnvState { list: any[] | null; loading: boolean; error: string | null; }
@@ -38,6 +41,9 @@ const ENV_CACHE: { [cid: string]: EnvState } = {};
 // The envelope currently open in the detail editor (Draft) or viewer.
 let ENV_OPEN: Envelope | null = null;
 let ENV_OPEN_CID = '';
+// Correction mode: a Sent/Partially Signed envelope temporarily editable —
+// recipients + field placement — with signed recipients locked (phase 4).
+let ENV_CORRECT = false;
 // Rendered first-page thumbnails, keyed by source url — pdf.js work is not free,
 // so a thumbnail is rendered once per url per session.
 const ENV_THUMBS: { [url: string]: string } = {};
@@ -114,13 +120,14 @@ async function envNew(cid: string): Promise<void> {
 }
 
 async function envOpen(cid: string, entryId: string): Promise<void> {
+  ENV_CORRECT = false;
   try {
     ENV_OPEN = await apiGetEnvelope(cid, entryId); ENV_OPEN_CID = cid;
     render();
   } catch (e: any) { toast(e && e.message ? e.message : String(e)); }
 }
 
-function envClose(): void { ENV_OPEN = null; render(); }
+function envClose(): void { ENV_OPEN = null; ENV_CORRECT = false; render(); }
 
 async function envVoid(cid: string, entryId: string, legacy: boolean): Promise<void> {
   const reason = prompt('Void this envelope? Recipients will no longer be able to sign.\nReason (optional):', '');
@@ -144,6 +151,8 @@ const ENV_KINDS: { v: string; label: string }[] = [
 
 function envDetail(c: Client, env: Envelope): string {
   const draft = env.status === 'Draft';
+  const inflight = env.status === 'Sent' || env.status === 'Partially Signed';
+  const editable = draft || (ENV_CORRECT && inflight);
   const docs = (env.documents || []).slice().sort((a, b) => a.order - b.order);
   const docRows = docs.length ? docs.map((d, i) => `
     <div class="env-doc" data-doc="${esc(d.id)}">
@@ -160,20 +169,16 @@ function envDetail(c: Client, env: Envelope): string {
     </div>`).join('')
     : `<div class="empty" style="padding:18px"><b>No documents yet</b><p>Upload the PDF(s) this envelope will send for signature.</p></div>`;
 
-  const recRows = (env.recipients || []).map((r, i) => draft ? `
+  const recRows = (env.recipients || []).map((r, i) => (editable && r.status !== 'signed') ? `
     <div class="env-rec" data-i="${i}">
       <input class="env-rec-name" value="${esc(r.name)}" placeholder="Full name" oninput="envRecChange(${i},'name',this.value)">
       <input class="env-rec-email" value="${esc(r.email)}" placeholder="Email (for email link)" oninput="envRecChange(${i},'email',this.value)">
       <select onchange="envRecChange(${i},'kind',this.value)">
         ${ENV_KINDS.map(k => `<option value="${k.v}"${r.kind === k.v ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}
       </select>
-      <input class="env-rec-order" type="number" min="1" value="${r.routingOrder}" title="Routing order" onchange="envRecChange(${i},'routingOrder',this.value)">
+      <input class="env-rec-order" type="number" min="1" value="${r.routingOrder}" title="Signing order" onchange="envRecChange(${i},'routingOrder',this.value)">
       <button class="ico-mini danger" title="Remove" onclick="envRecRemove(${i})">${ic('trash', 14)}</button>
-    </div>` : `
-    <div class="env-rec-ro">
-      <b>${esc(r.name)}</b> <span class="meta">${esc(r.email || '')} · ${esc(r.kind)} · order ${r.routingOrder}</span>
-      <span class="pill ${r.status === 'signed' ? 'ok' : 'draft'}">${esc(r.status)}</span>
-    </div>`).join('');
+    </div>` : envRecRoRow(c.id, env, r)).join('');
 
   return `<div class="section-head">
       <div><h3>${draft
@@ -182,12 +187,15 @@ function envDetail(c: Client, env: Envelope): string {
       <p>${draft ? 'Upload documents and add recipients. Field placement and sending come next.' : 'Read-only — this envelope is no longer a draft.'}</p></div>
       <div>
         <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
-        ${draft ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>
-        <button class="btn primary" onclick="envSend('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
-        ${envMySignable(env) ? `<button class="btn primary" onclick="envSignNow('${esc(c.id)}','${esc(env.entryId)}')">${ic('pen', 15)} Sign now</button>` : ''}
+        ${editable ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>` : ''}
+        ${draft ? `<button class="btn primary" onclick="envSendOpen('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
+        ${inflight && !ENV_CORRECT ? `<button class="btn outline" onclick="envCorrectStart()" title="Edit recipients or move fields on this sent envelope">${ic('edit', 15)} Correct</button>` : ''}
+        ${ENV_CORRECT ? `<button class="btn primary" onclick="envCorrectDone('${esc(c.id)}','${esc(env.entryId)}')">Done correcting</button>` : ''}
         ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
         ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
+    ${ENV_CORRECT ? `<div class="env-correct-note">${ic('edit', 14)} Correcting a sent envelope — recipients who already signed are locked, and their placed fields can't move. Pending signers see the updated envelope on their existing link.</div>` : ''}
+    ${envMetaLine(env)}
     <div class="card card-pad">
       <div class="agr-roles-h">Documents</div>
       ${docRows}
@@ -197,7 +205,7 @@ function envDetail(c: Client, env: Envelope): string {
     <div class="card card-pad" style="margin-top:14px">
       <div class="agr-roles-h">Recipients</div>
       ${recRows || '<p class="meta">No recipients yet.</p>'}
-      ${draft ? `<button class="btn outline sm" onclick="envRecAdd()">${ic('plus', 14)} Add recipient</button>` : ''}
+      ${editable ? `<button class="btn outline sm" onclick="envRecAdd()">${ic('plus', 14)} Add recipient</button>` : ''}
     </div>`;
 }
 
@@ -327,28 +335,141 @@ async function envRecRemove(i: number): Promise<void> {
 }
 
 /* ---- send + in-app signing (phase 3) ---- */
-function envMySignable(env: Envelope): boolean {
-  if (env.status !== 'Sent' && env.status !== 'Partially Signed') return false;
-  return (env.recipients || []).some(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
-}
-
-async function envSend(cid: string, entryId: string): Promise<void> {
+async function envSend(cid: string, entryId: string, opts?: any): Promise<void> {
   try {
-    const env = await apiSendEnvelope(cid, entryId);
+    const env = await apiSendEnvelope(cid, entryId, opts);
     ENV_OPEN = env;
     await loadEnvelopes(cid, true);
-    const links = (env.links || []).filter((l: any) => l.link);
-    toast('Sent.' + (links.length ? ' ' + links.length + ' signing link' + (links.length === 1 ? '' : 's') + ' emailed.' : ''));
+    const n = (env.notified || []).length;
+    toast('Sent.' + (n ? ' ' + n + ' signing link' + (n === 1 ? '' : 's') + ' emailed.' : ' No one to email yet.'));
     render();
   } catch (e: any) { toast('Send failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
+/* Send options — routing, expiration, reminders — chosen at send time. */
+function envSendOpen(cid: string, entryId: string): void {
+  const env = ENV_OPEN; if (!env) return;
+  const seq = env.routing ? env.routing === 'sequential' : true;
+  const host = document.createElement('div');
+  host.className = 'modal-overlay'; host.id = '__envSendOpts';
+  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(520px,94vw)">
+    <div class="modal-head"><div><b>Send “${esc(env.title)}”</b><p>Each recipient gets a personal signing link by email.</p></div>
+      <button class="ico-x" onclick="envSendClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body">
+      <label class="agb-f-req"><input type="checkbox" id="env-opt-seq" ${seq ? 'checked' : ''}>
+        Enforce signing order — a recipient is emailed only after everyone with a lower order number has finished</label>
+      <div class="field" style="margin-top:12px"><label>Expires after (days — 0 = never)</label>
+        <input id="env-opt-exp" type="number" min="0" value="${Number(env.expireDays) || 30}"></div>
+      <div class="field"><label>Remind pending signers every (days — 0 = off)</label>
+        <input id="env-opt-rem" type="number" min="0" value="${env.remindEveryDays == null ? 3 : Number(env.remindEveryDays)}"></div>
+    </div>
+    <div class="modal-foot"><span class="modal-status"></span>
+      <button class="btn ghost" onclick="envSendClose()">Cancel</button>
+      <button class="btn primary" onclick="envSendConfirm('${esc(cid)}','${esc(entryId)}')">${ic('mail', 15)} Send</button></div>
+  </div>`;
+  document.body.appendChild(host);
+}
+function envSendClose(): void { const m = document.getElementById('__envSendOpts'); if (m) m.remove(); }
+function envSendConfirm(cid: string, entryId: string): void {
+  const seq = (document.getElementById('env-opt-seq') as HTMLInputElement | null);
+  const exp = (document.getElementById('env-opt-exp') as HTMLInputElement | null);
+  const rem = (document.getElementById('env-opt-rem') as HTMLInputElement | null);
+  const opts = {
+    routing: seq && seq.checked ? 'sequential' : 'parallel',
+    expireDays: exp ? Math.max(0, Number(exp.value) || 0) : 0,
+    remindEveryDays: rem ? Math.max(0, Number(rem.value) || 0) : 0,
+  };
+  envSendClose();
+  envSend(cid, entryId, opts);
+}
+
+/* One recipient's read-only row: status-aware pill + the phase-4 actions. */
+function envRecRoRow(cid: string, env: Envelope, r: EnvRecipient): string {
+  const inflight = env.status === 'Sent' || env.status === 'Partially Signed';
+  const turn = env.routing !== 'sequential' || (r.routingOrder || 1) === (env.activeOrder || 0);
+  const kindLabel = (ENV_KINDS.find(k => k.v === r.kind) || { label: r.kind }).label;
+  let pill: string;
+  if (r.kind === 'cc') pill = `<span class="pill muted">CC</span>`;
+  else if (r.status === 'signed') pill = `<span class="pill ok">Signed${r.signedAt ? ' · ' + esc(fmtDate(r.signedAt) || '') : ''}</span>`;
+  else if (r.status === 'declined') pill = `<span class="pill warn">Declined</span>`;
+  else if (inflight && !turn) pill = `<span class="pill muted" title="Earlier signers haven't finished yet">Waiting · order ${r.routingOrder}</span>`;
+  else if (inflight) pill = `<span class="pill info">${r.notifiedAt ? 'Emailed' : 'Their turn'}</span>`;
+  else pill = `<span class="pill draft">${esc(r.status)}</span>`;
+  const acts: string[] = [];
+  if (inflight && r.status === 'pending' && turn) {
+    if (r.kind === 'external' && r.email) acts.push(`<button class="btn outline sm" onclick="envResend('${esc(cid)}','${esc(env.entryId)}','${esc(r.id)}')">${ic('mail', 13)} Resend</button>`);
+    if (r.kind === 'consultant') acts.push(`<button class="btn primary sm" onclick="envSignNow('${esc(cid)}','${esc(env.entryId)}','${esc(r.id)}')">${ic('pen', 13)} Sign now</button>`);
+    if (r.kind === 'inperson') acts.push(`<button class="btn primary sm" onclick="envHandOff('${esc(cid)}','${esc(env.entryId)}','${esc(r.id)}')">${ic('pen', 13)} Hand off to sign</button>`);
+  }
+  return `<div class="env-rec-ro">
+    <div class="env-rec-ro-main"><b>${esc(r.name)}</b>
+      <span class="meta">${esc(r.email || '')}${r.email ? ' · ' : ''}${esc(kindLabel)} · order ${r.routingOrder}</span>
+      ${r.status === 'declined' && r.declineReason ? `<div class="meta env-decline-reason">“${esc(r.declineReason)}”</div>` : ''}</div>
+    ${pill}<span class="env-rec-acts">${acts.join('')}</span>
+  </div>`;
+}
+
+/* Envelope status line: routing / expiration / reminders, shown once sent. */
+function envMetaLine(env: Envelope): string {
+  if (env.status === 'Draft') return '';
+  const bits: string[] = [];
+  bits.push(env.routing === 'sequential' ? 'Signing order enforced' : 'All signers at once');
+  if (env.expiresAt) bits.push('Expires ' + (fmtDate(env.expiresAt) || env.expiresAt));
+  if (env.remindEveryDays) bits.push('Reminders every ' + env.remindEveryDays + ' day' + (env.remindEveryDays === 1 ? '' : 's'));
+  if (env.senderName) bits.push('Sent by ' + env.senderName);
+  return `<div class="env-meta-line meta">${bits.map(esc).join(' · ')}</div>`;
+}
+
+async function envResend(cid: string, entryId: string, recipientId: string): Promise<void> {
+  try {
+    ENV_OPEN = await apiResendEnvelope(cid, entryId, recipientId);
+    toast('Signing link re-emailed.');
+    render();
+  } catch (e: any) { toast('Resend failed: ' + (e && e.message ? e.message : String(e))); }
+}
+
+/* Correction mode (phase 4): edit recipients / move fields on a Sent envelope. */
+function envCorrectStart(): void { ENV_CORRECT = true; render(); }
+async function envCorrectDone(cid: string, entryId: string): Promise<void> {
+  ENV_CORRECT = false;
+  try { ENV_OPEN = await apiGetEnvelope(cid, entryId); } catch (_e) { /* keep local */ }
+  toast('Corrections saved. Pending signers see the updated envelope on their existing links — use Resend to nudge them.');
+  render();
+}
+
+/* In-person hand-off: a full-screen prompt so staff deliberately hands the device
+   over, then the same in-app signing view the consultant uses. */
+function envHandOff(cid: string, entryId: string, recipientId: string): void {
+  const env = ENV_OPEN; if (!env) return;
+  const r = (env.recipients || []).find(x => x.id === recipientId); if (!r) return;
+  const host = document.createElement('div');
+  host.className = 'modal-overlay'; host.id = '__envHand';
+  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(460px,94vw)">
+    <div class="modal-body env-hand">
+      <div class="env-hand-ico">${ic('pen', 24)}</div>
+      <h2>Hand the device to ${esc(r.name)}</h2>
+      <p class="meta">They'll review the documents and sign right here, in person. Take the device back when they finish.</p>
+      <div class="env-hand-acts">
+        <button class="btn ghost" onclick="envHandClose()">Cancel</button>
+        <button class="btn primary" onclick="envHandBegin('${esc(cid)}','${esc(entryId)}','${esc(recipientId)}')">Begin signing</button>
+      </div>
+    </div></div>`;
+  document.body.appendChild(host);
+}
+function envHandClose(): void { const m = document.getElementById('__envHand'); if (m) m.remove(); }
+function envHandBegin(cid: string, entryId: string, recipientId: string): void {
+  envHandClose();
+  envSignNow(cid, entryId, recipientId);
+}
+
 /* Full-screen in-app signing on the SAME shared signview the parent page uses. */
-function envSignNow(cid: string, entryId: string): void {
+function envSignNow(cid: string, entryId: string, recipientId?: string): void {
   const env = ENV_OPEN;
   if (!env) return;
-  const me = (env.recipients || []).find(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
-  if (!me) { toast('Nothing for you to sign.'); return; }
+  const me = recipientId
+    ? (env.recipients || []).find(r => r.id === recipientId)
+    : (env.recipients || []).find(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
+  if (!me || me.status !== 'pending') { toast('Nothing to sign.'); return; }
   const host = document.createElement('div');
   host.className = 'modal-overlay';
   host.id = '__envSign';

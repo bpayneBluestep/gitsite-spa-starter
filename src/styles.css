@@ -1242,3 +1242,23 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
   .sg-doc{padding:16px 14px;font-size:14px}
 }
   color:var(--foreground);word-break:break-all}
+
+/* ===== phase 4: envelope lifecycle ===== */
+.env-rec-ro{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)}
+.env-rec-ro:last-of-type{border-bottom:0}
+.env-rec-ro-main{flex:1;min-width:0}
+.env-rec-ro-main .meta{margin-left:8px}
+.env-rec-acts{display:flex;gap:6px}
+.env-decline-reason{color:#8a5a00;margin-top:2px}
+.env-meta-line{margin:-6px 0 12px}
+.env-correct-note{display:flex;align-items:center;gap:8px;background:color-mix(in srgb,#b7791f 12%,var(--card));
+  border:1px solid color-mix(in srgb,#b7791f 35%,var(--border));color:#8a5a00;border-radius:8px;
+  padding:9px 13px;margin-bottom:12px;font-size:13px}
+.env-hand{text-align:center;padding:34px 26px}
+.env-hand-ico{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--accent-foreground);
+  display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.env-hand h2{margin:0 0 6px;font-size:19px}
+.env-hand-acts{margin-top:18px;display:flex;gap:10px;justify-content:center}
+.dsg-tab.locked{opacity:.55;cursor:not-allowed}
+.dsg-tab.locked .dsg-tab-label::after{content:' 🔒';font-size:9px}
+.dsg-owner.locked{opacity:.55}
