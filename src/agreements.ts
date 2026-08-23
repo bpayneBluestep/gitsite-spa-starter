@@ -89,7 +89,10 @@ function agreementsSection(c: Client): string {
     if ((a.status === 'Sent' || a.status === 'Partially Signed') && consultantPending) actions.push(`<button class="btn primary sm" onclick="agrSignSelf('${esc(c.id)}','${esc(a.entryId)}')">${ic('pen', 14)} Sign now</button>`);
     if (a.status === 'Draft') actions.push(`<button class="btn primary sm" onclick="agrSend('${esc(c.id)}','${esc(a.entryId)}')">${ic('mail', 14)} Send</button>`);
     if (a.status === 'Sent' || a.status === 'Partially Signed') actions.push(`<button class="btn outline sm" onclick="agrSend('${esc(c.id)}','${esc(a.entryId)}')">${ic('mail', 14)} Resend / links</button>`);
-    if (a.status === 'Completed' && a.signedPdf) actions.push(`<a class="btn primary sm" href="${esc(a.signedPdf)}" target="_blank" rel="noopener">${ic('download', 14)} Signed PDF</a>`);
+    // Routed through filesOpen, not a bare <a target="_blank">: the platform serves
+    // documents as Content-Disposition: attachment, so a plain link saves the file
+    // instead of showing it. See filesOpen in files.ts.
+    if (a.status === 'Completed' && a.signedPdf) actions.push(`<button class="btn primary sm" onclick="filesOpen('${esc(a.signedPdf)}')">${ic('download', 14)} Signed PDF</button>`);
     else if (a.status === 'Completed') actions.push(`<button class="btn outline sm" onclick="agrGetPdf('${esc(c.id)}','${esc(a.entryId)}',this)" title="The signed PDF is being generated in the background; click to check if it's ready.">${ic('download', 14)} PDF generating…</button>`);
     if (a.status !== 'Completed' && a.status !== 'Voided') actions.push(`<button class="btn ghost sm" onclick="agrVoid('${esc(c.id)}','${esc(a.entryId)}')">${ic('trash', 14)} Void</button>`);
     const linksBlock = a.links && a.links.length
@@ -267,11 +270,11 @@ async function agrGetPdf(cid: string, entryId: string, btn?: HTMLButtonElement):
   if (btn) { btn.disabled = true; btn.innerHTML = 'Checking…'; }
   try {
     const a = await apiGetAgreement(cid, entryId);
-    if (a && a.signedPdf) { window.open(a.signedPdf, '_blank'); return; }
+    if (a && a.signedPdf) { filesOpen(a.signedPdf); return; }
     // Not there — ask the server to produce it now.
     if (btn) btn.innerHTML = 'Generating…';
     const res = await apiGetSignedPdf(cid, entryId);
-    if (res && res.url) { window.open(res.url, '_blank'); await loadAgreements(cid, true); }
+    if (res && res.url) { filesOpen(res.url); await loadAgreements(cid, true); }
     else { toast('Your signed PDF is still being generated — check back in a moment.'); }
   } catch (e: any) {
     // A render can hang and 504. The signature, consent and hash are already

@@ -276,7 +276,65 @@ function humanSize(bytes: number): string {
 
 /* ---- navigation ---- */
 function filesGo(path: string): void { FILES_VIEW.path = path; render(); }
-function filesOpen(url: string): void { if (url) window.open(url, '_blank'); }
+/* Open a document in a tab instead of downloading it.
+
+   The platform serves /download/<id>/<name> with Content-Disposition: attachment, so
+   a plain window.open() saves the file even when Chrome is set to open PDFs inline.
+   The field's own "Open files inline in the browser" setting does not help: that
+   governs how BlueStep's Relate form UI renders its link, not what the download
+   endpoint sends to us.
+
+   Fetching the bytes and opening a blob URL drops the disposition header entirely.
+
+   SECURITY — the reason this is an allowlist and not "just blob everything": a blob
+   URL inherits the origin that created it. Opening a user-uploaded .html or .svg this
+   way would execute its script as eccrmgitsite.bluestep.net, against the viewer's
+   session. Only inert types get the blob treatment; everything else falls through to
+   the normal URL and downloads, exactly as it does today. Do not add svg/html here. */
+const INLINE_SAFE_TYPES: { [t: string]: boolean } = {
+  'application/pdf': true,
+  'image/png': true, 'image/jpeg': true, 'image/gif': true,
+  'image/webp': true, 'image/bmp': true,
+  'text/plain': true,
+};
+const INLINE_BY_EXT: { [ext: string]: string } = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', txt: 'text/plain',
+};
+
+function inlineTypeFor(url: string, served: string): string {
+  const t = (served || '').split(';')[0].trim().toLowerCase();
+  if (INLINE_SAFE_TYPES[t]) return t;
+  // Some documents come back as octet-stream regardless of what they are, so fall
+  // back to the extension — but only into the same allowlist.
+  const m = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url);
+  const byExt = m ? INLINE_BY_EXT[m[1].toLowerCase()] : '';
+  return byExt || '';
+}
+
+function filesOpen(url: string): void {
+  if (!url) return;
+  // Open the tab NOW, synchronously. A window.open() after an await is treated as
+  // unrequested by every popup blocker.
+  const w = window.open('', '_blank');
+  const bail = () => { if (w) { w.location.href = url; } else { window.open(url, '_blank'); } };
+
+  fetch(url, { credentials: 'same-origin' })
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const type = inlineTypeFor(url, r.headers.get('Content-Type') || '');
+      if (!type) throw new Error('not inline-safe');
+      return r.blob().then(b => ({ b: b, type: type }));
+    })
+    .then(({ b, type }) => {
+      const objUrl = URL.createObjectURL(new Blob([b], { type: type }));
+      if (w) { w.location.href = objUrl; } else { window.open(objUrl, '_blank'); }
+      // Revoking immediately kills the tab that is still loading it; a minute is long
+      // enough for the viewer to have the bytes and short enough not to leak.
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+    })
+    .catch(bail);
+}
 
 /* ---- drag & drop (move a file into a folder) ---- */
 function filesDragStart(e: DragEvent, entryId: string): void {
