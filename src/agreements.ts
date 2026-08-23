@@ -33,7 +33,7 @@ interface Envelope {
   signedPdf: string; documents: EnvDoc[]; tabs: any[]; anchors: any[];
   recipients: EnvRecipient[]; audit: any[];
   routing?: string; expiresAt?: string; expireDays?: number; remindEveryDays?: number;
-  activeOrder?: number; senderName?: string;
+  activeOrder?: number; senderName?: string; senderValues?: Record<string, any>;
 }
 
 interface EnvState { list: any[] | null; loading: boolean; error: string | null; }
@@ -110,6 +110,33 @@ function envList(c: Client, rows: any[]): string {
 
 /* ---- create / open / void ---- */
 async function envNew(cid: string): Promise<void> {
+  // Offer templates first — dragging 40 fields per envelope is what templates kill.
+  let tpls: any[] = [];
+  try { tpls = ((await apiListAgreementTemplates()) || []).filter((t: any) => t.bodyJson && t.bodyJson.schemaVersion === 3 && (t.bodyJson.documents || []).length && t.status !== 'Archived'); }
+  catch (_e) { tpls = []; }
+  if (!tpls.length) { envNewBlank(cid); return; }
+  const host = document.createElement('div');
+  host.className = 'modal-overlay'; host.id = '__envTpl';
+  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
+    <div class="modal-head"><div><b>New envelope</b><p>Start from a template — documents, fields, and auto-place rules come along.</p></div>
+      <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body">
+      <div class="env-tpl-list">
+        ${tpls.map((t: any) => `<button class="env-tpl-row" onclick="envTplPick('${esc(cid)}','${esc(t.entryId)}')">
+          <b>${esc(t.name)}</b><span class="meta">${(t.bodyJson.documents || []).length} PDF${(t.bodyJson.documents || []).length === 1 ? '' : 's'}
+          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}${(t.bodyJson.anchors || []).length ? ' · ' + (t.bodyJson.anchors || []).length + ' auto-place rule' + ((t.bodyJson.anchors || []).length === 1 ? '' : 's') : ''}</span>
+        </button>`).join('')}
+      </div>
+    </div>
+    <div class="modal-foot"><span class="modal-status"></span>
+      <button class="btn ghost" onclick="envTplClose()">Cancel</button>
+      <button class="btn outline" onclick="envTplClose(); envNewBlank('${esc(cid)}')">Blank envelope</button></div>
+  </div>`;
+  document.body.appendChild(host);
+  ENV_TPLS = tpls;
+}
+
+async function envNewBlank(cid: string): Promise<void> {
   const title = prompt('Envelope title (e.g. "Admissions Packet"):', '');
   if (title == null) return;
   try {
@@ -117,6 +144,125 @@ async function envNew(cid: string): Promise<void> {
     ENV_OPEN = env; ENV_OPEN_CID = cid;
     await loadEnvelopes(cid, true);
   } catch (e: any) { toast('Create failed: ' + (e && e.message ? e.message : String(e))); }
+}
+
+/* ---- apply a template (phase 5) ---- */
+let ENV_TPLS: any[] = [];
+function envTplClose(): void { const m = document.getElementById('__envTpl'); if (m) m.remove(); }
+
+/* Role slots of a template: a 2-holder role expands to roleId and roleId~2 —
+   each slot maps to one real person in the apply form. '__sender__' is never a slot. */
+function envTplSlots(body: any): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  for (const r of (body.roles || [])) {
+    const base = r.name || 'Signer';
+    out.push({ id: r.id, label: r.holders === 2 ? base + ' (1)' : base });
+    if (r.holders === 2) out.push({ id: r.id + '~2', label: base + ' (2)' });
+  }
+  return out;
+}
+
+function envTplPick(cid: string, tplEntryId: string): void {
+  const t = ENV_TPLS.find((x: any) => x.entryId === tplEntryId);
+  if (!t) return;
+  const slots = envTplSlots(t.bodyJson);
+  const m = document.getElementById('__envTpl');
+  if (!m) return;
+  m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(640px,94vw)">
+    <div class="modal-head"><div><b>${esc(t.name)}</b><p>Who fills each role?</p></div>
+      <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Envelope title</label><input id="env-tpl-title" value="${esc(t.name)}"></div>
+      ${slots.map((sl, i) => `<div class="env-tpl-slot">
+        <div class="env-tpl-slot-h">${esc(sl.label)}</div>
+        <div class="env-rec">
+          <input class="env-rec-name" id="env-slot-name-${i}" placeholder="Full name">
+          <input class="env-rec-email" id="env-slot-email-${i}" placeholder="Email (for email link)">
+          <select id="env-slot-kind-${i}">${ENV_KINDS.filter(k => k.v !== 'cc').map(k => `<option value="${k.v}">${esc(k.label)}</option>`).join('')}</select>
+          <input class="env-rec-order" id="env-slot-order-${i}" type="number" min="1" value="1" title="Signing order">
+        </div></div>`).join('')}
+    </div>
+    <div class="modal-foot"><span class="modal-status" id="env-tpl-status"></span>
+      <button class="btn ghost" onclick="envTplClose()">Cancel</button>
+      <button class="btn primary" id="env-tpl-create" onclick="envTplCreate('${esc(cid)}','${esc(tplEntryId)}')">Create envelope</button></div>
+  </div>`;
+}
+
+function envTplStatus(msg: string): void {
+  const el = document.getElementById('env-tpl-status');
+  if (el) el.textContent = msg;
+}
+
+async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
+  const t = ENV_TPLS.find((x: any) => x.entryId === tplEntryId);
+  if (!t) return;
+  const body = t.bodyJson;
+  const slots = envTplSlots(body);
+  const g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
+  const title = (g('env-tpl-title') && g('env-tpl-title')!.value.trim()) || t.name;
+  const recipients = slots.map((sl, i) => ({
+    role: sl.id,
+    name: g('env-slot-name-' + i) ? g('env-slot-name-' + i)!.value.trim() : '',
+    email: g('env-slot-email-' + i) ? g('env-slot-email-' + i)!.value.trim() : '',
+    kind: (document.getElementById('env-slot-kind-' + i) as HTMLSelectElement | null)?.value || 'external',
+    routingOrder: Math.max(1, Number(g('env-slot-order-' + i)?.value) || 1),
+  }));
+  for (const r of recipients) { if (!r.name) { toast('Every role needs a name.'); return; } }
+  const btn = document.getElementById('env-tpl-create') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    envTplStatus('Creating envelope…');
+    let env = await apiCreateEnvelope(cid, title);
+    env = await apiSetEnvelopeRecipients(cid, env.entryId, recipients, title);
+    // slot id → real recipient id (setEnvelopeRecipients preserves `role`)
+    const slotToRid: { [slot: string]: string } = {};
+    for (const r of env.recipients) if (r.role) slotToRid[r.role] = r.id;
+    const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (slotToRid[slot] || null);
+    await loadPdfJs();
+    const allTabs: any[] = [];
+    const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+    for (let di = 0; di < docs.length; di++) {
+      const doc = docs[di];
+      envTplStatus(`Copying "${doc.name}" (${di + 1}/${docs.length})…`);
+      const resp = await fetch(doc.sourceUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Could not fetch template PDF "' + doc.name + '" (' + resp.status + ').');
+      const b64 = envBufToB64(await resp.arrayBuffer());
+      env = await apiUploadEnvelopeDoc(cid, env.entryId, doc.name, b64, doc.pages || 0);
+      const newDoc = env.documents[env.documents.length - 1];
+      // designer-placed template tabs, slot → person
+      for (const tb of (body.tabs || [])) {
+        if (tb.docId !== doc.id) continue;
+        const rid = mapSlot(String(tb.recipientId));
+        if (!rid) continue;
+        allTabs.push({ ...tb, id: 't_' + Math.random().toString(36).slice(2, 10), docId: newDoc.id, recipientId: rid });
+      }
+      // anchor rules against the real text layer
+      if ((body.anchors || []).length) {
+        envTplStatus(`Auto-placing fields on "${doc.name}"…`);
+        const pdf = await pdfOpenData(b64);
+        const atabs = await geoAnchorTabs(pdf, newDoc.id, body.anchors || [], mapSlot);
+        allTabs.push(...atabs);
+      }
+    }
+    envTplStatus('Saving ' + allTabs.length + ' fields…');
+    env = await apiSaveEnvelopeTabs(cid, env.entryId, allTabs);
+    envTplClose();
+    ENV_OPEN = env; ENV_OPEN_CID = cid;
+    await loadEnvelopes(cid, true);
+    toast('Envelope created from template — ' + allTabs.length + ' fields placed.');
+    render();
+  } catch (e: any) {
+    envTplStatus('');
+    if (btn) btn.disabled = false;
+    toast('Apply failed: ' + (e && e.message ? e.message : String(e)));
+  }
+}
+
+function envBufToB64(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode.apply(null, Array.prototype.slice.call(u8, i, Math.min(u8.length, i + 8192)));
+  return btoa(bin);
 }
 
 async function envOpen(cid: string, entryId: string): Promise<void> {
@@ -366,6 +512,11 @@ function envSendOpen(cid: string, entryId: string): void {
         <input id="env-opt-exp" type="number" min="0" value="${Number(env.expireDays) || 30}"></div>
       <div class="field"><label>Remind pending signers every (days — 0 = off)</label>
         <input id="env-opt-rem" type="number" min="0" value="${env.remindEveryDays == null ? 3 : Number(env.remindEveryDays)}"></div>
+      ${envSenderTabs(env).length ? `<div class="env-sender-fields">
+        <div class="agr-roles-h">Your fields (stamped onto the documents)</div>
+        ${envSenderTabs(env).map(t => `<div class="field"><label>${esc(t.label || 'Sender field')}${t.required !== false ? ' *' : ''}</label>
+          <input id="env-sv-${esc(t.id)}" value="${esc(((env.senderValues || {}) as any)[t.id] || '')}"></div>`).join('')}
+      </div>` : ''}
     </div>
     <div class="modal-foot"><span class="modal-status"></span>
       <button class="btn ghost" onclick="envSendClose()">Cancel</button>
@@ -378,13 +529,26 @@ function envSendConfirm(cid: string, entryId: string): void {
   const seq = (document.getElementById('env-opt-seq') as HTMLInputElement | null);
   const exp = (document.getElementById('env-opt-exp') as HTMLInputElement | null);
   const rem = (document.getElementById('env-opt-rem') as HTMLInputElement | null);
+  const senderValues: Record<string, any> = {};
+  const env = ENV_OPEN;
+  for (const t of (env ? envSenderTabs(env) : [])) {
+    const inp = document.getElementById('env-sv-' + t.id) as HTMLInputElement | null;
+    const v = inp ? inp.value.trim() : '';
+    if (t.required !== false && !v) { toast('Fill in "' + (t.label || 'the sender field') + '" before sending.'); return; }
+    senderValues[t.id] = v;
+  }
   const opts = {
     routing: seq && seq.checked ? 'sequential' : 'parallel',
     expireDays: exp ? Math.max(0, Number(exp.value) || 0) : 0,
     remindEveryDays: rem ? Math.max(0, Number(rem.value) || 0) : 0,
+    senderValues: senderValues,
   };
   envSendClose();
   envSend(cid, entryId, opts);
+}
+
+function envSenderTabs(env: Envelope): any[] {
+  return (env.tabs || []).filter((t: any) => t.recipientId === '__sender__');
 }
 
 /* One recipient's read-only row: status-aware pill + the phase-4 actions. */

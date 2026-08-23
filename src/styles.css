@@ -1262,3 +1262,21 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .dsg-tab.locked{opacity:.55;cursor:not-allowed}
 .dsg-tab.locked .dsg-tab-label::after{content:' 🔒';font-size:9px}
 .dsg-owner.locked{opacity:.55}
+
+/* ===== phase 5: templates + anchors + sender fields ===== */
+.env-tpl-list{display:flex;flex-direction:column;gap:8px}
+.env-tpl-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;
+  padding:11px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);cursor:pointer}
+.env-tpl-row:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--card))}
+.env-tpl-slot{margin-top:10px}
+.env-tpl-slot-h{font:600 11px/1 inherit;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);margin-bottom:5px}
+.env-sender-fields{margin-top:14px;border-top:1px solid var(--border);padding-top:10px}
+.dsg-holders{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.dsg-holders-row{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--muted-foreground);cursor:pointer}
+.dsg-anchor{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--border)}
+.dsg-anchor-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dsg-anchor-main b{font-size:12.5px}
+.dsg-anchor-form{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.dsg-anchor-form input,.dsg-anchor-form select{width:100%;box-sizing:border-box}
+.dsg-anchor-row{display:flex;gap:6px;align-items:center}
+.dsg-anchor-row input[type=number]{width:70px}

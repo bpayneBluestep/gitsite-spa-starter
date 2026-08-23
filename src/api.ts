@@ -366,7 +366,7 @@ function apiSetEnvelopeRecipients(clientId: string, entryId: string, recipients:
 function apiVoidEnvelope(clientId: string, entryId: string, reason: string): Promise<any> {
   return maestroPost('voidEnvelope', { id: clientId, entryId: entryId, reason: reason, entity: agrEntity(clientId) });
 }
-function apiSendEnvelope(clientId: string, entryId: string, opts?: { routing?: string; expireDays?: number; remindEveryDays?: number }): Promise<any> {
+function apiSendEnvelope(clientId: string, entryId: string, opts?: { routing?: string; expireDays?: number; remindEveryDays?: number; senderValues?: Record<string, any> }): Promise<any> {
   return maestroPost('sendEnvelope', { id: clientId, entryId: entryId, entity: agrEntity(clientId), ...(opts || {}) });
 }
 function apiResendEnvelope(clientId: string, entryId: string, recipientId: string): Promise<any> {
@@ -378,8 +378,8 @@ function apiSignEnvelope(clientId: string, entryId: string, recipientId: string,
 function apiSaveEnvelopeTabs(clientId: string, entryId: string, tabs: any[]): Promise<any> {
   return maestroPost('saveEnvelopeTabs', { id: clientId, entryId: entryId, tabs: tabs, entity: agrEntity(clientId) });
 }
-function apiSaveTemplateDesign(entryId: string, tabs: any[], roles: any[]): Promise<any> {
-  return maestroPost('saveTemplateDesign', { entryId: entryId, tabs: tabs, roles: roles });
+function apiSaveTemplateDesign(entryId: string, tabs: any[], roles: any[], anchors?: any[]): Promise<any> {
+  return maestroPost('saveTemplateDesign', { entryId: entryId, tabs: tabs, roles: roles, anchors: anchors });
 }
 function apiUploadTemplateDoc(name: string, dataBase64: string): Promise<any> {
   return maestroPost('uploadTemplateDoc', { name: name, dataBase64: dataBase64 });

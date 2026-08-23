@@ -63,3 +63,61 @@ const GEO_TAB_LABELS: { [type: string]: string } = {
    Chosen for contrast against white pages in both themes. */
 const GEO_RECIPIENT_COLORS = ['#2563eb', '#d97706', '#0d9488', '#9333ea', '#dc2626', '#4d7c0f'];
 function geoRecipientColor(i: number): string { return GEO_RECIPIENT_COLORS[i % GEO_RECIPIENT_COLORS.length]; }
+
+/* ===== Anchor tagging (phase 5) =====
+   Evaluate a template's auto-place rules against a pdf.js document's text layer.
+   A rule places one tab beside EVERY occurrence of its matchText. Coordinates come
+   back in PDF points, top-left origin — same contract as designer-placed tabs.
+   Text items are grouped into lines by baseline (pdf.js splits runs arbitrarily),
+   so a phrase split across items still matches; the x of the match start is
+   interpolated inside its span by character fraction. */
+async function geoAnchorTabs(pdf: any, docId: string, rules: any[],
+  slotMap: (slot: string) => string | null): Promise<any[]> {
+  const out: any[] = [];
+  if (!rules || !rules.length) return out;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const pageH = page.getViewport({ scale: 1 }).height;
+    const tc = await page.getTextContent();
+    const lines: { [y: string]: any[] } = {};
+    for (const it of (tc.items as any[])) {
+      if (!it.str) continue;
+      const y = Math.round(it.transform[5]);
+      let key = String(y);
+      for (const k in lines) { if (Math.abs(Number(k) - y) <= 2) { key = k; break; } }
+      (lines[key] = lines[key] || []).push(it);
+    }
+    for (const k in lines) {
+      const items = lines[k].slice().sort((a: any, b: any) => a.transform[4] - b.transform[4]);
+      let lineStr = '';
+      const spans: { start: number; x: number; w: number; h: number; len: number }[] = [];
+      for (const it of items) {
+        spans.push({ start: lineStr.length, x: it.transform[4], w: it.width, h: it.height || Math.abs(it.transform[3]) || 11, len: it.str.length });
+        lineStr += it.str;
+      }
+      for (const rule of rules) {
+        if (!rule || !rule.matchText) continue;
+        let from = 0, idx: number;
+        while ((idx = lineStr.indexOf(rule.matchText, from)) >= 0) {
+          from = idx + rule.matchText.length;
+          const rid = slotMap(String(rule.roleSlot || ''));
+          if (!rid) continue;
+          const sp = spans.find(s2 => idx >= s2.start && idx < s2.start + s2.len) || spans[0];
+          const frac = sp.len ? (idx - sp.start) / sp.len : 0;
+          const mx = sp.x + sp.w * frac;
+          const topY = pageH - Number(k) - (sp.h || 11);
+          const def = GEO_TAB_DEFAULTS[rule.tabType] || GEO_TAB_DEFAULTS.text;
+          out.push({
+            id: 't_a' + Math.random().toString(36).slice(2, 10),
+            docId: docId, page: p,
+            x: mx + (Number(rule.dx) || 0), y: topY + (Number(rule.dy) || 0),
+            w: Number(rule.w) || def.w, h: Number(rule.h) || def.h,
+            type: rule.tabType || 'text', recipientId: rid,
+            required: rule.required !== false, label: rule.label || '', options: [],
+          });
+        }
+      }
+    }
+  }
+  return out;
+}

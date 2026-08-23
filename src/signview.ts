@@ -102,6 +102,12 @@ function svPaintOverlay(pageEl: HTMLElement, docId: string, page: number, width:
 
 /* The control (mine) or the read-only value (theirs) for one tab. */
 function svTabHtml(t: any, owner: any, mine: boolean): string {
+  // Sender-filled fields (phase 5): values live on the envelope, not a signer.
+  if (t.recipientId === '__sender__') {
+    const sval = ((SV && SV.env && (SV.env as any).senderValues) || {})[t.id];
+    if (t.type === 'checkbox') return `<span class="sv-box${sval ? ' on' : ''}"></span>`;
+    return `<span class="sv-ro">${sigEsc(sval == null ? '' : String(sval))}</span>`;
+  }
   const val = (owner.tabValues || {})[t.id];
   const signed = owner.status === 'signed';
   if (t.type === 'signature' || t.type === 'initials') {

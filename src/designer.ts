@@ -52,6 +52,8 @@ interface DsgState {
   clipboard: DsgTab | null;
   correcting: boolean;              // env is Sent/Partially Signed (phase-4 correction)
   locked: { [rid: string]: boolean }; // recipients who already signed — their tabs are immutable
+  roles: any[];                     // tpl mode: raw roles (id, name, holders) — owners are DERIVED slots
+  anchors: any[];                   // tpl mode: auto-place rules (phase 5)
 }
 
 let DSG: DsgState | null = null;
@@ -69,7 +71,7 @@ function viewDesigner(parts: string[]): string {
       mode: mode, cid: cid, entryId: entryId, title: '', docs: [], tabs: [], owners: [],
       activeOwner: '', armedType: '', selected: '', zoom: 0, // 0 = fit-to-width, computed on first mount
       loading: true, error: '', dirty: false, saving: false, pages: [], clipboard: null,
-      correcting: false, locked: {},
+      correcting: false, locked: {}, roles: [], anchors: [],
     };
     dsgLoad();
   }
@@ -104,10 +106,15 @@ async function dsgLoad(): Promise<void> {
       d.tabs = t.bodyJson.tabs || [];
       const roles = (t.bodyJson.roles || []) as any[];
       if (!roles.length) roles.push({ id: 'role1_' + Math.random().toString(36).slice(2, 6), name: 'Signer 1' });
-      d.owners = roles.map((r: any, i: number) => ({ id: r.id, name: r.name || r.label || 'Role', color: geoRecipientColor(i) }));
+      d.roles = roles;
+      d.anchors = (t.bodyJson.anchors || []) as any[];
+      d.owners = dsgOwnersFromRoles(roles);
     }
-    if (!d.owners.length) { d.error = d.mode === 'env' ? 'Add at least one signing recipient before placing fields.' : 'Add a role first.'; }
-    const firstUnlocked = d.owners.find(o => !d.locked[o.id]);
+    // Both modes get the sender pseudo-owner: fields the SENDER fills in the send
+    // dialog (tuition rate, start date) — never a signer's, never signature-like.
+    d.owners.push({ id: '__sender__', name: 'Sender (at send)', color: '#64748b' });
+    if (d.owners.length < 2) { d.error = d.mode === 'env' ? 'Add at least one signing recipient before placing fields.' : 'Add a role first.'; }
+    const firstUnlocked = d.owners.find(o => !d.locked[o.id] && o.id !== '__sender__');
     d.activeOwner = firstUnlocked ? firstUnlocked.id : (d.owners.length ? d.owners[0].id : '');
     d.loading = false;
   } catch (e: any) { d.error = e && e.message ? e.message : String(e); d.loading = false; }
@@ -161,8 +168,11 @@ function dsgView(): string {
         <div class="card card-pad">
           <div class="agb-side-h">${d.mode === 'env' ? 'Recipients' : 'Roles'}</div>
           <div class="dsg-owners">${ownerBtns}</div>
-          ${d.mode === 'tpl' ? `<button class="btn ghost sm" onclick="dsgAddRole()">${ic('plus', 13)} Add role</button>` : ''}
+          ${d.mode === 'tpl' ? `<button class="btn ghost sm" onclick="dsgAddRole()">${ic('plus', 13)} Add role</button>
+          <div class="dsg-holders">${d.roles.map(r => `<label class="dsg-holders-row"><input type="checkbox" ${r.holders === 2 ? 'checked' : ''}
+            onchange="dsgToggleHolders('${esc(r.id)}')"> ${esc(r.name)}: two signers share this role</label>`).join('')}</div>` : ''}
         </div>
+        ${d.mode === 'tpl' ? dsgAnchorsCard() : ''}
         <div class="card card-pad">
           <div class="agb-side-h">Fields</div>
           <div class="dsg-palette">${palette}</div>
@@ -378,8 +388,10 @@ function dsgArm(type: string): void {
 
 // Create a tab of `type` centred on a page-local pixel point. Shared by
 // click-to-place and drag-from-palette.
+const DSG_SIGNER_ONLY: { [t: string]: boolean } = { signature: true, initials: true, dateSigned: true, name: true };
 function dsgPlaceAt(docId: string, page: number, pxX: number, pxY: number, type: string): void {
   const d = DSG!;
+  if (d.activeOwner === '__sender__' && DSG_SIGNER_ONLY[type]) { toast('Sender fields are filled at send time — signature-type fields need a signer.'); d.armedType = ''; render(); return; }
   const scale = dsgScaleFor(docId, page);
   const def = GEO_TAB_DEFAULTS[type];
   const tab: DsgTab = {
@@ -482,6 +494,7 @@ function dsgProp(key: string, val: any): void {
   if (!t) return;
   if (d.locked[t.recipientId]) return;
   if (key === 'recipientId' && d.locked[String(val)]) { toast('That recipient has already signed.'); return; }
+  if (key === 'recipientId' && String(val) === '__sender__' && DSG_SIGNER_ONLY[t.type]) { toast('Signature-type fields need a signer, not the sender.'); return; }
   (t as any)[key] = val;
   dsgTouched();
   if (key === 'recipientId') {
@@ -540,11 +553,97 @@ function dsgZoomFit(): void {
 
 function dsgAddRole(): void {
   const d = DSG!;
-  const name = prompt('Role name (e.g. "Parent / Guardian"):', 'Signer ' + (d.owners.length + 1));
+  const name = prompt('Role name (e.g. "Parent / Guardian"):', 'Signer ' + (d.roles.length + 1));
   if (name == null) return;
-  const id = 'role' + (d.owners.length + 1) + '_' + Math.random().toString(36).slice(2, 6);
-  d.owners.push({ id: id, name: name.trim() || ('Signer ' + (d.owners.length + 1)), color: geoRecipientColor(d.owners.length) });
+  const id = 'role' + (d.roles.length + 1) + '_' + Math.random().toString(36).slice(2, 6);
+  d.roles.push({ id: id, name: name.trim() || ('Signer ' + (d.roles.length + 1)), holders: 1 });
+  dsgRebuildOwners();
   d.activeOwner = id;
+  dsgTouched();
+  render();
+}
+
+/* Roles → designer owner SLOTS. A 2-holder role ("Sponsor(s)") becomes two slots —
+   roleId (holder 1) and roleId~2 (holder 2) — so each holder's fields are placed
+   and signed independently; apply maps each slot to a real person. */
+function dsgOwnersFromRoles(roles: any[]): DsgOwner[] {
+  const out: DsgOwner[] = [];
+  roles.forEach((r: any) => {
+    const base = r.name || r.label || 'Role';
+    out.push({ id: r.id, name: r.holders === 2 ? base + ' (1)' : base, color: geoRecipientColor(out.length) });
+    if (r.holders === 2) out.push({ id: r.id + '~2', name: base + ' (2)', color: geoRecipientColor(out.length) });
+  });
+  return out;
+}
+function dsgRebuildOwners(): void {
+  const d = DSG!;
+  d.owners = dsgOwnersFromRoles(d.roles);
+  d.owners.push({ id: '__sender__', name: 'Sender (at send)', color: '#64748b' });
+}
+function dsgToggleHolders(roleId: string): void {
+  const d = DSG!;
+  const r = d.roles.find((x: any) => x.id === roleId);
+  if (!r) return;
+  const to2 = r.holders !== 2;
+  if (!to2) {
+    // collapsing 2 → 1 reassigns the second holder's tabs (and anchor rules) to holder 1
+    for (const t of d.tabs) if (t.recipientId === roleId + '~2') t.recipientId = roleId;
+    for (const a of d.anchors) if (a.roleSlot === roleId + '~2') a.roleSlot = roleId;
+    if (d.activeOwner === roleId + '~2') d.activeOwner = roleId;
+  }
+  r.holders = to2 ? 2 : 1;
+  dsgRebuildOwners();
+  dsgTouched();
+  render();
+}
+
+/* ---- auto-place rules (anchor tagging, phase 5) ---- */
+function dsgAnchorsCard(): string {
+  const d = DSG!;
+  const slotName = (id: string) => (d.owners.find(o => o.id === id) || { name: id }).name;
+  const rows = d.anchors.map((a: any, i: number) => `
+    <div class="dsg-anchor"><div class="dsg-anchor-main"><b>“${esc(a.matchText)}”</b>
+      <span class="meta">${esc(GEO_TAB_LABELS[a.tabType] || a.tabType)} → ${esc(slotName(a.roleSlot))} · dx ${a.dx || 0}, dy ${a.dy || 0}</span></div>
+      <button class="ico-mini danger" title="Delete rule" onclick="dsgAnchorDel(${i})">${ic('trash', 13)}</button></div>`).join('');
+  const types = ['initials', 'signature', 'text', 'dateSigned', 'checkbox'];
+  return `<div class="card card-pad">
+    <div class="agb-side-h">Auto-place rules</div>
+    <p class="meta">On apply, each rule drops a field beside <b>every</b> occurrence of its text.</p>
+    ${rows || '<p class="meta">No rules yet.</p>'}
+    <div class="dsg-anchor-form">
+      <input id="dsg-an-text" placeholder="Match text (exact, case-sensitive)">
+      <div class="dsg-anchor-row">
+        <select id="dsg-an-type">${types.map(t => `<option value="${t}">${esc(GEO_TAB_LABELS[t] || t)}</option>`).join('')}</select>
+        <select id="dsg-an-slot">${d.owners.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>
+      </div>
+      <div class="dsg-anchor-row">
+        <input id="dsg-an-dx" type="number" value="100" title="dx (pt right of the text)"> <span class="meta">dx</span>
+        <input id="dsg-an-dy" type="number" value="0" title="dy (pt down)"> <span class="meta">dy</span>
+      </div>
+      <button class="btn outline sm" onclick="dsgAnchorAdd()">${ic('plus', 13)} Add rule</button>
+    </div>
+  </div>`;
+}
+function dsgAnchorAdd(): void {
+  const d = DSG!;
+  const g = (id: string) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+  const text = g('dsg-an-text') ? (g('dsg-an-text') as HTMLInputElement).value.trim() : '';
+  if (!text) { toast('Enter the text to match.'); return; }
+  d.anchors.push({
+    id: 'an_' + Math.random().toString(36).slice(2, 8),
+    matchText: text,
+    tabType: g('dsg-an-type') ? g('dsg-an-type')!.value : 'initials',
+    roleSlot: g('dsg-an-slot') ? g('dsg-an-slot')!.value : '',
+    dx: Number(g('dsg-an-dx') ? g('dsg-an-dx')!.value : 0) || 0,
+    dy: Number(g('dsg-an-dy') ? g('dsg-an-dy')!.value : 0) || 0,
+    required: true,
+  });
+  dsgTouched();
+  render();
+}
+function dsgAnchorDel(i: number): void {
+  const d = DSG!;
+  d.anchors.splice(i, 1);
   dsgTouched();
   render();
 }
@@ -610,7 +709,7 @@ async function dsgFlushSave(): Promise<void> {
   const st = document.querySelector('.dsg-savestate'); if (st) st.textContent = 'Saving…';
   try {
     if (d.mode === 'env') await apiSaveEnvelopeTabs(d.cid, d.entryId, d.tabs);
-    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.owners.map(o => ({ id: o.id, name: o.name })));
+    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.roles.map((r: any) => ({ id: r.id, name: r.name, holders: r.holders === 2 ? 2 : 1 })), d.anchors);
     d.dirty = false;
     if (st) st.textContent = 'Saved';
   } catch (e: any) {
