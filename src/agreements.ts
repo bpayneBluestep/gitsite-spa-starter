@@ -183,7 +183,9 @@ function envDetail(c: Client, env: Envelope): string {
       <div>
         <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
         ${draft ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>
-        <button class="btn primary" disabled title="Sending arrives in phase 3 — envelopes can be fully prepared now.">${ic('mail', 15)} Send</button>` : ''}
+        <button class="btn primary" onclick="envSend('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
+        ${envMySignable(env) ? `<button class="btn primary" onclick="envSignNow('${esc(c.id)}','${esc(env.entryId)}')">${ic('pen', 15)} Sign now</button>` : ''}
+        ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
         ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
     <div class="card card-pad">
@@ -322,4 +324,63 @@ async function envRecRemove(i: number): Promise<void> {
   ENV_OPEN.recipients.splice(i, 1);
   await envSaveRecipients();
   render();
+}
+
+/* ---- send + in-app signing (phase 3) ---- */
+function envMySignable(env: Envelope): boolean {
+  if (env.status !== 'Sent' && env.status !== 'Partially Signed') return false;
+  return (env.recipients || []).some(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
+}
+
+async function envSend(cid: string, entryId: string): Promise<void> {
+  try {
+    const env = await apiSendEnvelope(cid, entryId);
+    ENV_OPEN = env;
+    await loadEnvelopes(cid, true);
+    const links = (env.links || []).filter((l: any) => l.link);
+    toast('Sent.' + (links.length ? ' ' + links.length + ' signing link' + (links.length === 1 ? '' : 's') + ' emailed.' : ''));
+    render();
+  } catch (e: any) { toast('Send failed: ' + (e && e.message ? e.message : String(e))); }
+}
+
+/* Full-screen in-app signing on the SAME shared signview the parent page uses. */
+function envSignNow(cid: string, entryId: string): void {
+  const env = ENV_OPEN;
+  if (!env) return;
+  const me = (env.recipients || []).find(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
+  if (!me) { toast('Nothing for you to sign.'); return; }
+  const host = document.createElement('div');
+  host.className = 'modal-overlay';
+  host.id = '__envSign';
+  host.innerHTML = `<div class="modal-card env-sign-card" role="dialog" aria-modal="true">
+    <div class="modal-head"><div><b>${esc(env.title)}</b><p>Complete your fields, then Finish.</p></div>
+      <button class="ico-x" onclick="envSignClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body"><div id="sv-host"></div>
+      <label class="sg-consent"><input type="checkbox" id="env-consent" onchange="svUpdateProgress()">
+        I adopt this signature and agree it is legally binding.</label></div>
+  </div>`;
+  document.body.appendChild(host);
+  svMount({
+    container: document.getElementById('sv-host')!,
+    env: env,
+    meId: me.id,
+    submit: (p) => {
+      const consent = document.getElementById('env-consent') as HTMLInputElement | null;
+      if (!consent || !consent.checked) return Promise.reject(new Error('Please check the consent box.'));
+      return apiSignEnvelope(cid, entryId, me.id, p.signatureData, p.typedName, p.tabValues);
+    },
+    onDone: async (res) => {
+      envSignClose();
+      ENV_OPEN = res && res.entryId ? res : null;
+      await loadEnvelopes(cid, true);
+      toast(res && res.completed ? 'Signed — envelope complete. The signed PDF is on file.' : 'Signed.');
+      render();
+    },
+  });
+}
+
+function envSignClose(): void {
+  sigCloseModal(); sigOnChange(null); sigResetAdopted();
+  const m = document.getElementById('__envSign');
+  if (m) m.remove();
 }

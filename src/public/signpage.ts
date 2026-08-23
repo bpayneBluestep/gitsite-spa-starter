@@ -77,6 +77,7 @@
         STATE.signer = d.signer;
         STATE.merge = d.merge || {};
         STATE.signers = d.signers || [];
+        if (d.kind === 'envelope') { renderEnvelopeSign(d); return; }
         STATE.title = d.title || (d.doc && d.doc.title) || 'Agreement';
         STATE.org = d.orgName || '';
         renderSign();
@@ -238,3 +239,45 @@
   if (!meta.clientid || !meta.logid || !meta.token) setRoot(gateMessage('badtoken'));
   else load();
 })();
+
+/* ---- v3 envelope flow — the shared signview does the heavy lifting ---- */
+function renderEnvelopeSign(d: any): void {
+  if (!root) return;
+  var me = d.me || {};
+  setRoot(
+    '<div class="sg-wrap sv-wrap">'
+    + '<div class="sg-head">'
+    + (d.orgName ? '<div class="sg-org">' + sigEsc(d.orgName) + '</div>' : '')
+    + '<h1>' + sigEsc(d.title) + '</h1>'
+    + '<p class="sg-hi">' + (me.name ? 'Please review and complete your fields, ' + sigEsc(me.name) + '.' : 'Please review and sign.') + '</p>'
+    + '</div>'
+    + '<div id="sv-host"></div>'
+    + '<label class="sg-consent"><input type="checkbox" id="sg-consent" onchange="svUpdateProgress()"> I agree to sign these documents electronically, and that my electronic signature is legally binding.</label>'
+    + '</div>');
+  svMount({
+    container: document.getElementById('sv-host')!,
+    env: d,
+    meId: me.id || '',
+    submit: function (p) {
+      var consent = document.getElementById('sg-consent');
+      if (!consent || !(consent as HTMLInputElement).checked) { return Promise.reject(new Error('Please check the consent box to sign.')); }
+      return fetch(INGESTER, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'submit', entity: meta.entity, clientid: meta.clientid, logid: meta.logid,
+          token: meta.token, consent: true, signatureData: p.signatureData,
+          typedName: p.typedName, tabValues: p.tabValues,
+        }),
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || 'Signing failed.');
+        return j.data || j;
+      });
+    },
+    onDone: function (res) {
+      setRoot('<div class="sg-wrap"><div class="sg-done"><h1>Thank you!</h1>'
+        + '<p>Your signature has been recorded.'
+        + (res && res.completed ? ' All parties have now signed — the completed document is on file.' : ' You will receive a copy once all parties have signed.')
+        + '</p></div></div>');
+    },
+  });
+}

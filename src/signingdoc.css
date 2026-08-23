@@ -186,3 +186,34 @@
   .sg-modal { padding: 18px 16px 14px }
   .sg-face span { font-size: 26px }
 }
+
+/* ===== envelope signing view (signview.ts) — both surfaces ===== */
+.sv-doc-list{background:#eceef1;padding:16px 0;border-radius:8px}
+.sv-docname{font:600 11px/1 Helvetica,Arial,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#6b7280;margin:14px 16px 8px}
+.sv-page{position:relative;margin:0 auto 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.sv-page canvas{display:block}
+.sv-overlay{position:absolute;inset:0}
+.sv-tab{position:absolute;box-sizing:border-box;display:flex;align-items:stretch}
+.sv-tab.mine{z-index:2}
+.sv-tab input[type=text],.sv-tab select{width:100%;height:100%;box-sizing:border-box;font:inherit;font-size:12px;
+  border:1.5px solid #f6c344;background:#fff8e4;border-radius:2px;padding:0 4px;color:#1a1a1a}
+.sv-tab input[type=text]:focus,.sv-tab select:focus{outline:0;border-color:#2563eb;background:#fff}
+.sv-tab input[type=checkbox]{width:100%;height:100%;margin:0;accent-color:#2563eb;cursor:pointer}
+.sv-radio{display:flex;flex-direction:column;gap:2px;font-size:11px;background:#fff8e4;border:1.5px dashed #f6c344;
+  border-radius:3px;padding:2px 5px;overflow:auto;width:100%}
+.sv-radio label{display:flex;gap:5px;align-items:center;white-space:nowrap;cursor:pointer}
+.sv-sign-box{width:100%;height:100%;font:600 12px/1 Helvetica,Arial,sans-serif;color:#6b4a00;cursor:pointer;
+  background:#f6c344;border:0;border-radius:3px}
+.sv-sign-box:hover{background:#f0b82a}
+.sv-sig-img{max-width:100%;max-height:100%;object-fit:contain;cursor:pointer;align-self:flex-end}
+.sv-ph{font-size:10px;color:#9aa3ad;font-style:italic;align-self:center;padding:0 3px;overflow:hidden;white-space:nowrap}
+.sv-ro{font-size:12px;color:#1a1a1a;align-self:center;padding:0 3px;overflow:hidden;white-space:nowrap}
+.sv-box{width:100%;height:100%;box-sizing:border-box;border:1.5px solid #1a1a1a;display:block}
+.sv-box.on{background:#1a1a1a}
+.sv-tab.pulse{animation:svpulse .9s ease 2}
+@keyframes svpulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 5px rgba(37,99,235,.4)}}
+.sv-bar{position:sticky;bottom:0;display:flex;align-items:center;gap:10px;background:#fff;
+  border:1px solid #e2e4e8;border-radius:10px;box-shadow:0 -4px 18px rgba(0,0,0,.08);padding:10px 14px;margin-top:12px}
+.sv-progress{font-size:12.5px;color:#4b5563;flex:1}
+.env-sign-card{width:min(960px,96vw);max-height:94vh;display:flex;flex-direction:column}
+.env-sign-card .modal-body{overflow:auto}

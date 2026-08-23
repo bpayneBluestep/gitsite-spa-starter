@@ -37,7 +37,7 @@ const JS_ORDER = [
   'icons', 'theme', 'data', 'api', 'auth', 'components', 'chrome', 'views', 'record',
   'formedit', 'contacts', 'communications', 'tasks', 'referrals', 'files',
   'programoverlay', 'settings', 'email', 'emailcompose', 'applications',
-  'appbuilder', 'clientform', 'pdfrt', 'pdfgeo', 'pdfspike', 'signing', 'agreements', 'agreementbuilder', 'designer', 'chatbot',
+  'appbuilder', 'clientform', 'pdfrt', 'pdfgeo', 'pdfspike', 'signing', 'signview', 'agreements', 'agreementbuilder', 'designer', 'chatbot',
   'main',
 ]
 const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']
@@ -45,7 +45,7 @@ const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']
 // The public signing page. `signing` must come first — signpage calls into it.
 // No 'api'/'auth'/'components': the page talks only to the public runAsSuper
 // ingester and must work with no session.
-const PUBLIC_JS_ORDER = ['pdfrt', 'signing', 'public/signpage']
+const PUBLIC_JS_ORDER = ['pdfrt', 'pdfgeo', 'signing', 'signview', 'public/signpage']
 const PUBLIC_CSS_ORDER = ['signingdoc', 'public/signpage']
 
 const shortHash = (s) => createHash('sha256').update(s).digest('hex').slice(0, 10)
@@ -109,6 +109,11 @@ for (const f of VENDOR_FILES) {
   await writeFile(join(assets, hashed), buf)
   vendorManifest[f] = `assets/${hashed}`
 }
+// A STABLE, unhashed copy of pdf-lib for SERVER-side use: the BlueStep endpoints
+// fetch and eval it to stamp PDFs (phase-0 spike B). They cannot chase content
+// hashes across deploys, and cache-busting is irrelevant server-side.
+await writeFile(join(assets, 'pdf-lib.js'), await readFile(join(root, 'vendor', 'pdf-lib.min.js')))
+
 const VENDOR_PRELUDE = `// ==== vendor manifest (generated) ====
 const VENDOR = ${JSON.stringify(vendorManifest)};
 `
