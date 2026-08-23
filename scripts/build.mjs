@@ -37,7 +37,7 @@ const JS_ORDER = [
   'icons', 'theme', 'data', 'api', 'auth', 'components', 'chrome', 'views', 'record',
   'formedit', 'contacts', 'communications', 'tasks', 'referrals', 'files',
   'programoverlay', 'settings', 'email', 'emailcompose', 'applications',
-  'appbuilder', 'clientform', 'signing', 'agreements', 'agreementbuilder', 'chatbot',
+  'appbuilder', 'clientform', 'pdfrt', 'pdfspike', 'signing', 'agreements', 'agreementbuilder', 'chatbot',
   'main',
 ]
 const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']
@@ -45,7 +45,7 @@ const CSS_ORDER = ['tokens', 'styles', 'signingdoc', 'chatbot', 'appbuilder']
 // The public signing page. `signing` must come first — signpage calls into it.
 // No 'api'/'auth'/'components': the page talks only to the public runAsSuper
 // ingester and must work with no session.
-const PUBLIC_JS_ORDER = ['signing', 'public/signpage']
+const PUBLIC_JS_ORDER = ['pdfrt', 'signing', 'public/signpage']
 const PUBLIC_CSS_ORDER = ['signingdoc', 'public/signpage']
 
 const shortHash = (s) => createHash('sha256').update(s).digest('hex').slice(0, 10)
@@ -59,8 +59,8 @@ await mkdir(assets, { recursive: true })
 // Transpile + concatenate + minify one ordered list of sources into a hashed asset.
 // Identifier renaming stays OFF for both bundles — inline HTML handlers resolve
 // top-level function names against the global object.
-async function bundleJs(order, prefix) {
-  const chunks = []
+async function bundleJs(order, prefix, prelude = '') {
+  const chunks = prelude ? [prelude] : []
   for (const name of order) {
     const code = await readFile(join(src, `${name}.ts`), 'utf8')
     const out = await transform(code, { loader: 'ts', target: 'es2020' })
@@ -94,13 +94,32 @@ async function emitHtml(templatePath, outPath, cssName, jsName) {
   await writeFile(outPath, html)
 }
 
+// --- vendor libraries (pdf.js, pdf-lib, interact.js) ---
+// Copied VERBATIM with a content hash — never re-minified, never concatenated into a
+// bundle. pdf.js 6.x is ES-module-only, so runtime code loads it with a dynamic
+// import(); pdf-lib and interact are classic scripts injected on demand. The manifest
+// of hashed names is prepended to both JS bundles as VENDOR so runtime code can find
+// them. The .mjs worker keeps its extension — pdf.js loads it as a module worker.
+const VENDOR_FILES = ['pdf.min.mjs', 'pdf.worker.min.mjs', 'pdf-lib.min.js', 'interact.min.js']
+const vendorManifest = {}
+for (const f of VENDOR_FILES) {
+  const buf = await readFile(join(root, 'vendor', f))
+  const dot = f.indexOf('.')
+  const hashed = `${f.slice(0, dot)}.${shortHash(buf.toString('latin1'))}${f.slice(dot)}`
+  await writeFile(join(assets, hashed), buf)
+  vendorManifest[f] = `assets/${hashed}`
+}
+const VENDOR_PRELUDE = `// ==== vendor manifest (generated) ====
+const VENDOR = ${JSON.stringify(vendorManifest)};
+`
+
 // --- the consultant CRM (index.html) ---
-const appJs = await bundleJs(JS_ORDER, 'app')
+const appJs = await bundleJs(JS_ORDER, 'app', VENDOR_PRELUDE)
 const appCss = await bundleCss(CSS_ORDER, 'app')
 await emitHtml(join(src, 'index.html'), join(root, 'index.html'), appCss.name, appJs.name)
 
 // --- the public signing page (sign.html) ---
-const signJs = await bundleJs(PUBLIC_JS_ORDER, 'sign')
+const signJs = await bundleJs(PUBLIC_JS_ORDER, 'sign', VENDOR_PRELUDE)
 const signCss = await bundleCss(PUBLIC_CSS_ORDER, 'sign')
 await emitHtml(join(src, 'public/sign.html'), join(root, 'sign.html'), signCss.name, signJs.name)
 
