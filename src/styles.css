@@ -1053,6 +1053,12 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .dsg-tab.selected{box-shadow:0 0 0 2px color-mix(in srgb,var(--oc) 55%,transparent);z-index:3}
 .dsg-tab-label{font:600 10px/1 Helvetica,Arial,sans-serif;color:var(--oc);padding:0 4px;
   white-space:nowrap;pointer-events:none;user-select:none}
+/* Drag-from-palette ghost — pointer-events:none so elementFromPoint sees the page
+   beneath it; dashed until it is actually over a droppable page. */
+.dsg-ghost{position:fixed;z-index:9999;pointer-events:none;box-sizing:border-box;
+  border:1.5px dashed var(--oc);border-radius:3px;background:color-mix(in srgb,var(--oc) 14%,transparent);
+  color:var(--oc);font:600 10px/1.6 Helvetica,Arial,sans-serif;padding:2px 5px;overflow:hidden;white-space:nowrap}
+.dsg-ghost.droppable{border-style:solid}
 .dsg-prop-acts{display:flex;gap:6px;margin-top:6px}
 #dsg-props textarea{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;
   background:var(--card);color:var(--foreground);font:inherit;font-size:12.5px;padding:6px 8px}

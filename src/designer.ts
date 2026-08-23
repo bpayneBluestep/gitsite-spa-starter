@@ -116,8 +116,9 @@ function dsgView(): string {
       <span class="dsg-owner-dot"></span>${esc(o.name)}</button>`).join('');
 
   const palette = Object.keys(GEO_TAB_DEFAULTS).map(t => `
-    <button class="dsg-pal ${d.armedType === t ? 'armed' : ''}" onclick="dsgArm('${t}')"
-      title="Click, then click the page to place">${esc(GEO_TAB_LABELS[t] || t)}</button>`).join('');
+    <button class="dsg-pal ${d.armedType === t ? 'armed' : ''}" onclick="dsgPalClick('${t}')"
+      onpointerdown="dsgPalDown(event,'${t}')"
+      title="Drag onto the page, or click then click the page">${esc(GEO_TAB_LABELS[t] || t)}</button>`).join('');
 
   const zooms = [0.5, 0.75, 1, 1.25, 1.5, 2];
   const zoomBtns = `<button class="btn ghost sm" onclick="dsgZoomFit()" title="Fit the page to the window">Fit</button>`
@@ -355,20 +356,19 @@ function dsgArm(type: string): void {
   render();
 }
 
-function dsgPageClick(ev: MouseEvent, docId: string, page: number): void {
+// Create a tab of `type` centred on a page-local pixel point. Shared by
+// click-to-place and drag-from-palette.
+function dsgPlaceAt(docId: string, page: number, pxX: number, pxY: number, type: string): void {
   const d = DSG!;
-  if (!d.armedType) { d.selected = ''; dsgRepaintAll(); return; }
-  const pageEl = (ev.currentTarget as HTMLElement);
-  const rect = pageEl.getBoundingClientRect();
   const scale = dsgScaleFor(docId, page);
-  const def = GEO_TAB_DEFAULTS[d.armedType];
-  const x = geoPxToPt(ev.clientX - rect.left, scale) - def.w / 2;
-  const y = geoPxToPt(ev.clientY - rect.top, scale) - def.h / 2;
+  const def = GEO_TAB_DEFAULTS[type];
   const tab: DsgTab = {
     id: 't_' + Math.random().toString(36).slice(2, 10),
-    docId: docId, page: page, x: x, y: y, w: def.w, h: def.h,
-    type: d.armedType, recipientId: d.activeOwner,
-    required: true, label: '', options: d.armedType === 'radioGroup' ? ['Option 1', 'Option 2'] : [],
+    docId: docId, page: page,
+    x: geoPxToPt(pxX, scale) - def.w / 2, y: geoPxToPt(pxY, scale) - def.h / 2,
+    w: def.w, h: def.h,
+    type: type, recipientId: d.activeOwner,
+    required: true, label: '', options: type === 'radioGroup' ? ['Option 1', 'Option 2'] : [],
   };
   const info = dsgPageInfo(docId, page);
   if (info) geoClampTab(tab, info.wPt, info.hPt);
@@ -377,6 +377,70 @@ function dsgPageClick(ev: MouseEvent, docId: string, page: number): void {
   d.armedType = '';
   dsgTouched();
   render();
+}
+
+function dsgPageClick(ev: MouseEvent, docId: string, page: number): void {
+  const d = DSG!;
+  if (!d.armedType) { d.selected = ''; dsgRepaintAll(); return; }
+  const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+  dsgPlaceAt(docId, page, ev.clientX - rect.left, ev.clientY - rect.top, d.armedType);
+}
+
+/* ---- drag-from-palette ----
+   pointerdown on a palette button starts watching; once the pointer travels >5px a
+   ghost (sized at the hovered page's scale) follows it, and releasing over a page
+   places the tab there. Releasing anywhere else cancels. A plain CLICK (no travel)
+   still arms click-to-place — both idioms work, nobody has to relearn anything.
+   The ghost is pointer-events:none so elementFromPoint sees the page under it. */
+let DSG_PAL_SUPPRESS_CLICK = false;
+function dsgPalDown(ev: PointerEvent, type: string): void {
+  if (ev.button !== 0) return;
+  const startX = ev.clientX, startY = ev.clientY;
+  let ghost: HTMLElement | null = null;
+  DSG_PAL_SUPPRESS_CLICK = false;
+
+  const pageUnder = (x: number, y: number): HTMLElement | null => {
+    const el = document.elementFromPoint(x, y);
+    return el ? (el.closest('.dsg-page') as HTMLElement | null) : null;
+  };
+  const onMove = (mv: PointerEvent) => {
+    if (!ghost) {
+      if (Math.abs(mv.clientX - startX) + Math.abs(mv.clientY - startY) < 5) return;
+      DSG_PAL_SUPPRESS_CLICK = true;
+      ghost = document.createElement('div');
+      ghost.className = 'dsg-ghost';
+      const o = DSG!.owners.find(x => x.id === DSG!.activeOwner);
+      ghost.style.setProperty('--oc', o ? o.color : '#64748b');
+      ghost.textContent = GEO_TAB_LABELS[type] || type;
+      document.body.appendChild(ghost);
+    }
+    const pg = pageUnder(mv.clientX, mv.clientY);
+    const def = GEO_TAB_DEFAULTS[type];
+    const scale = pg ? dsgScaleFor(pg.getAttribute('data-doc') || '', Number(pg.getAttribute('data-page')) || 1) : 1;
+    ghost.style.width = Math.round(def.w * scale) + 'px';
+    ghost.style.height = Math.round(def.h * scale) + 'px';
+    ghost.style.left = Math.round(mv.clientX - (def.w * scale) / 2) + 'px';
+    ghost.style.top = Math.round(mv.clientY - (def.h * scale) / 2) + 'px';
+    ghost.classList.toggle('droppable', !!pg);
+  };
+  const onUp = (up: PointerEvent) => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    if (!ghost) return; // plain click — the click handler arms as before
+    ghost.remove();
+    const pg = pageUnder(up.clientX, up.clientY);
+    if (!pg) return;
+    const rect = pg.getBoundingClientRect();
+    dsgPlaceAt(pg.getAttribute('data-doc') || '', Number(pg.getAttribute('data-page')) || 1,
+      up.clientX - rect.left, up.clientY - rect.top, type);
+  };
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+
+function dsgPalClick(type: string): void {
+  if (DSG_PAL_SUPPRESS_CLICK) { DSG_PAL_SUPPRESS_CLICK = false; return; }
+  dsgArm(type);
 }
 
 function dsgSelect(id: string): void {
