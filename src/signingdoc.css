@@ -97,10 +97,19 @@
   font-size: .95em; cursor: pointer; white-space: nowrap;
 }
 .sg-opt input { accent-color: var(--sg-focus); cursor: pointer }
+/* Read-only choice marks. The box is drawn, never a U+25A0/U+25A1 glyph — Georgia
+   has no Geometric Shapes block, so the PDF renders squares as tofu, and the screen
+   and the PDF must agree on which option was chosen. Mirrors the drawn box in
+   renderSignedAgreementHtml. */
 .sg-opt-ro {
   display: inline-block; margin-right: 14px; font-size: .95em; color: var(--sg-ink);
   white-space: nowrap;
 }
+.sg-box {
+  display: inline-block; width: 8px; height: 8px;
+  border: 1px solid currentColor; margin-right: 5px; vertical-align: baseline;
+}
+.sg-box.on { background: currentColor }
 
 /* ---- the signature modal ----
    Owns its own colours outright: it is a floating surface over two different

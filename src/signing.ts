@@ -107,7 +107,8 @@ function sigChoiceReadonly(def: SigFieldDef, raw: any): string {
   if (Object.prototype.toString.call(raw) === '[object Array]') { (raw as any[]).forEach(v => { chosen[String(v)] = true; }); }
   else if (raw != null && String(raw) !== '') { chosen[String(raw)] = true; }
   return (def.options || []).map(o =>
-    '<span class="sg-opt-ro">' + (chosen[String(o)] ? '&#9632;' : '&#9633;') + ' ' + sigEsc(o) + '</span>'
+    '<span class="sg-opt-ro"><span class="sg-box' + (chosen[String(o)] ? ' on' : '') + '"></span>'
+    + sigEsc(o) + '</span>'
   ).join(' ');
 }
 
