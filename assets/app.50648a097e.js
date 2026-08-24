@@ -1070,7 +1070,7 @@ const VENDOR={"pdf.min.mjs":"assets/pdf.4f5e33cb89.min.mjs","pdf.worker.min.mjs"
       </div>
       <div class="env-row-acts">${open}${voidBtn}</div>
     </div>`}).join("");return head+body}async function envNew(cid){let tpls=[];try{tpls=(await apiListAgreementTemplates()||[]).filter(t=>t.bodyJson&&t.bodyJson.schemaVersion===3&&(t.bodyJson.documents||[]).length&&t.status==="Active")}catch{tpls=[]}if(!tpls.length){envNewBlank(cid);return}const host=document.createElement("div");host.className="modal-overlay",host.id="__envTpl",host.innerHTML=`<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
-    <div class="modal-head"><div><b>New envelope</b><p>Start from a template \u2014 documents, fields, and auto-place rules come along.</p></div>
+    <div class="modal-head"><div><b>New envelope</b><p>Start from a template \u2014 documents and fields come along.</p></div>
       <button class="ico-x" onclick="envTplClose()">${ic("x",18)}</button></div>
     <div class="modal-body">
       <div class="env-tpl-list">

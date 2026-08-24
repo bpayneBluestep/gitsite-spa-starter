@@ -121,7 +121,7 @@ async function envNew(cid: string): Promise<void> {
   const host = document.createElement('div');
   host.className = 'modal-overlay'; host.id = '__envTpl';
   host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
-    <div class="modal-head"><div><b>New envelope</b><p>Start from a template — documents, fields, and auto-place rules come along.</p></div>
+    <div class="modal-head"><div><b>New envelope</b><p>Start from a template — documents and fields come along.</p></div>
       <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
     <div class="modal-body">
       <div class="env-tpl-list">
