@@ -301,6 +301,7 @@ const SIG_FONTS: { label: string; css: string }[] = [
 ];
 
 let SIG_MODAL_PAD: SigPad | null = null;
+let SIG_MODAL_PAD_INI: SigPad | null = null;
 let SIG_MODAL_FONT = 0;
 
 function sigClickSign(): void {
@@ -321,8 +322,12 @@ function sigClickSign(): void {
     + '<div class="sg-faces" id="__sgFaces"></div>'
     + '</div>'
     + '<div class="sg-pane" data-pane="draw" hidden>'
+    + '<label class="sg-lbl">Signature</label>'
     + '<canvas id="__sgPad" class="sg-pad" width="560" height="150"></canvas>'
-    + '<button type="button" class="sg-clear" onclick="sigModalClear()">Clear</button>'
+    + '<button type="button" class="sg-clear" onclick="sigModalClear()">Clear signature</button>'
+    + '<label class="sg-lbl" style="margin-top:12px">Initials <span class="sg-lbl-soft">— used in the smaller initials boxes</span></label>'
+    + '<canvas id="__sgPadIni" class="sg-pad sg-pad-ini" width="240" height="110"></canvas>'
+    + '<button type="button" class="sg-clear" onclick="sigModalClearIni()">Clear initials</button>'
     + '</div>'
     + '<div class="sg-modal-f">'
     + '<button type="button" class="sg-btn ghost" onclick="sigCloseModal()">Cancel</button>'
@@ -341,10 +346,15 @@ function sigRenderFaces(): void {
   const host = document.getElementById('__sgFaces');
   if (!host) return;
   const name = (document.getElementById('__sgName') as HTMLInputElement | null);
-  const val = name && name.value.trim() ? name.value.trim() : 'Your name';
+  const real = name ? name.value.trim() : '';
+  const val = real || 'Your name';
+  const ini = sigInitialsFrom(real) || '··';
   host.innerHTML = SIG_FONTS.map((f, i) =>
     '<button type="button" class="sg-face' + (i === SIG_MODAL_FONT ? ' active' : '') + '" onclick="sigModalPickFont(' + i + ')">'
-    + '<span style="font-family:' + f.css + '">' + sigEsc(val) + '</span></button>').join('');
+    + '<span class="sg-face-name" style="font-family:' + f.css + '">' + sigEsc(val) + '</span>'
+    + '<span class="sg-face-ini" title="Your initials — they fill the smaller initials boxes" style="font-family:' + f.css + '">' + sigEsc(ini) + '</span>'
+    + '</button>').join('')
+    + '<div class="sg-hint">The boxed mark is your initials — it fills the initials boxes.</div>';
 }
 
 function sigModalPreview(): void { sigRenderFaces(); }
@@ -365,10 +375,12 @@ function sigModalTab(which: string): void {
   }
   if (which === 'draw' && !SIG_MODAL_PAD) {
     SIG_MODAL_PAD = sigSetupPad(document.getElementById('__sgPad') as HTMLCanvasElement | null);
+    SIG_MODAL_PAD_INI = sigSetupPad(document.getElementById('__sgPadIni') as HTMLCanvasElement | null);
   }
 }
 
 function sigModalClear(): void { if (SIG_MODAL_PAD) SIG_MODAL_PAD.clear(); }
+function sigModalClearIni(): void { if (SIG_MODAL_PAD_INI) SIG_MODAL_PAD_INI.clear(); }
 
 function sigModalErr(msg: string): void {
   const e = document.getElementById('__sgErr');
@@ -379,6 +391,7 @@ function sigModalErr(msg: string): void {
 
 function sigCloseModal(): void {
   if (SIG_MODAL_PAD) { SIG_MODAL_PAD.destroy(); SIG_MODAL_PAD = null; }
+  if (SIG_MODAL_PAD_INI) { SIG_MODAL_PAD_INI.destroy(); SIG_MODAL_PAD_INI = null; }
   const m = document.getElementById('__sgModal');
   if (m && m.parentNode) m.parentNode.removeChild(m);
 }
@@ -512,18 +525,23 @@ async function sigModalAdopt(): Promise<void> {
     // on which tab they used.
     const el = document.getElementById('__sgName') as HTMLInputElement | null;
     const name = el && el.value.trim() ? el.value.trim() : '';
-    // Initials boxes get typed-style initials even for a drawn signature — there
-    // is no drawn-initials pad, and a full signature squeezed into an initials
-    // box reads as an error.
-    SIG_ADOPTED = { dataUrl: await sigNormalize(SIG_MODAL_PAD.dataUrl()), typedName: name, initialsUrl: await sigMakeInitials(name, SIG_FONTS[0].css) };
+    // Drawn signatures need drawn initials too — reusing the full signature in
+    // an initials box reads as an error, and initials are their own mark.
+    if (!SIG_MODAL_PAD_INI || !SIG_MODAL_PAD_INI.isDrawn()) { sigModalErr('Draw your initials too — they fill the initials boxes.'); return; }
+    SIG_ADOPTED = { dataUrl: await sigNormalize(SIG_MODAL_PAD.dataUrl()), typedName: name, initialsUrl: await sigNormalize(SIG_MODAL_PAD_INI.dataUrl()) };
   }
   sigCloseModal();
   if (SIG_ON_CHANGE) SIG_ON_CHANGE();
 }
 
-/* "Brandon Payne" -> "BP", rendered in the signature script. '' when no name. */
+/* "Brandon Payne" -> "BP". '' when the name has no letters. */
+function sigInitialsFrom(name: string): string {
+  return (name || '').split(/\s+/).map(w => (w.replace(/[^A-Za-z]/g, '')[0] || '')).join('').toUpperCase().slice(0, 4);
+}
+
+/* The initials mark rendered in the signature script. '' when no name. */
 async function sigMakeInitials(name: string, cssFont: string): Promise<string> {
-  const initials = (name || '').split(/\s+/).map(w => (w.replace(/[^A-Za-z]/g, '')[0] || '')).join('').toUpperCase().slice(0, 4);
+  const initials = sigInitialsFrom(name);
   if (!initials) return '';
   try { const url = await sigRasterizeTyped(initials, cssFont); return url ? await sigNormalize(url) : ''; } catch (_e) { return ''; }
 }

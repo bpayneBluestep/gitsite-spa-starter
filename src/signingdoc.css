@@ -155,6 +155,14 @@
 }
 .sg-face span { font-size: 32px; line-height: 1.25; color: #12325a; overflow: hidden; white-space: nowrap }
 .sg-face:hover { border-color: #c7cdd6; background: #fafbfc }
+.sg-face .sg-face-name { flex: 1 1 auto }
+.sg-face .sg-face-ini {
+  flex: 0 0 auto; min-width: 52px; text-align: center;
+  border: 1px dashed #c7cdd6; border-radius: 6px; padding: 0 10px; margin-left: 12px;
+}
+.sg-hint { font-size: 11.5px; color: #6b7280; margin-top: 6px }
+.sg-lbl-soft { font-weight: 400; color: #6b7280; text-transform: none }
+.sg-pad-ini { width: 240px; height: 110px }
 .sg-face.active { border-color: #12325a; box-shadow: 0 0 0 2px rgba(18, 50, 90, .12) }
 
 .sg-pad {
