@@ -116,7 +116,7 @@ function svMount(host: SvHost): void {
       : '')
     + html
     + `<div class="sv-bar">
-        ${host.consentLabel && host.meId ? `<label class="sv-consent"><input type="checkbox" id="sv-consent" onchange="svUpdateProgress()"> ${sigEsc(host.consentLabel)}</label>` : ''}
+        ${host.consentLabel && host.meId ? `<label class="sv-consent"><input type="checkbox" id="sv-consent" onchange="svUpdateProgress()"> ${sigEsc(host.consentLabel)}</label><div class="sv-consent-note" id="sv-consent-note" style="display:none" role="alert"></div>` : ''}
         <div class="sv-progress" id="sv-progress"></div>
         <span class="sv-savenote" id="sv-savenote"></span>
         ${host.saveProgress && host.meId ? '<button type="button" class="sg-btn ghost" id="sv-later" onclick="svSaveLater()">Finish later</button>' : ''}
@@ -328,10 +328,12 @@ function svUpdateProgress(): void {
   const mine = (host.env.tabs || []).filter((t: any) => t.recipientId === host.meId && t.required !== false).length;
   const p = document.getElementById('sv-progress');
   if (p) p.textContent = mine ? (mine - missing.length) + ' of ' + mine + ' required fields complete' : '';
+  // Finish stays CLICKABLE when only consent is missing — clicking it then
+  // shows a loud, explicit error (a disabled button reads as silently broken).
   const consentEl = document.getElementById('sv-consent') as HTMLInputElement | null;
-  const consentOk = !host.consentLabel || (consentEl ? consentEl.checked : false);
+  if (consentEl && consentEl.checked) svConsentError(false);
   const f = document.getElementById('sv-finish') as HTMLButtonElement | null;
-  if (f) { f.disabled = missing.length > 0 || !consentOk; f.title = !consentOk && !missing.length ? 'Check the consent box to finish' : ''; }
+  if (f) f.disabled = missing.length > 0;
   const n = document.getElementById('sv-next') as HTMLButtonElement | null;
   if (n) n.style.display = missing.length ? '' : 'none';
   svScheduleSave();
@@ -397,13 +399,26 @@ function svNext(): void {
   });
 }
 
+/* Loud consent error: red banner in the bar + highlighted checkbox. Cleared the
+   moment the box is checked (svUpdateProgress). */
+function svConsentError(show: boolean): void {
+  const lb = document.querySelector('.sv-consent') as HTMLElement | null;
+  const note = document.getElementById('sv-consent-note');
+  if (lb) lb.classList.toggle('sv-consent-err', show);
+  if (note) {
+    note.textContent = show ? 'You haven’t consented yet — check the box above to finish signing.' : '';
+    (note as HTMLElement).style.display = show ? '' : 'none';
+    if (show) { lb && lb.scrollIntoView({ behavior: 'smooth', block: 'center' }); lb && (lb.classList.remove('pulse'), void lb.offsetWidth, lb.classList.add('pulse')); }
+  }
+}
+
 async function svFinish(): Promise<void> {
   const host = SV; if (!host) return;
   const missing = svMissing();
   if (missing.length) { svNext(); return; }
   if (host.consentLabel) {
     const c = document.getElementById('sv-consent') as HTMLInputElement | null;
-    if (!c || !c.checked) { if (c) c.focus(); alert('Please check the consent box to sign.'); return; }
+    if (!c || !c.checked) { svConsentError(true); if (c) c.focus(); return; }
   }
   const a = sigAdopted();
   const btn = document.getElementById('sv-finish') as HTMLButtonElement | null;
