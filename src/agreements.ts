@@ -149,6 +149,144 @@ async function envNewBlank(cid: string): Promise<void> {
   } catch (e: any) { toast('Create failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
+/* ---- composite templates (DocuSign-style): add a template to a DRAFT ----
+   The category problem: standard vs accelerated packets share most paperwork.
+   Instead of duplicating whole packet templates, keep a core template plus small
+   addenda and stack them into ONE envelope. Roles are matched to the envelope's
+   existing recipients BY NAME (how DocuSign matches composite-template roles);
+   unmatched roles add a new person, optional roles can be skipped. */
+async function envAddTpl(cid: string, entryId: string): Promise<void> {
+  let tpls: any[] = [];
+  try { tpls = ((await apiListAgreementTemplates()) || []).filter((t: any) => t.bodyJson && t.bodyJson.schemaVersion === 3 && (t.bodyJson.documents || []).length && t.status === 'Active'); }
+  catch (_e) { tpls = []; }
+  if (!tpls.length) { toast('No active templates to add.'); return; }
+  ENV_TPLS = tpls;
+  const host = document.createElement('div');
+  host.className = 'modal-overlay'; host.id = '__envTpl';
+  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
+    <div class="modal-head"><div><b>Add from template</b><p>Its documents and fields append to this envelope — recipients are shared.</p></div>
+      <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body">
+      <div class="env-tpl-list">
+        ${tpls.map((t: any) => `<button class="env-tpl-row" onclick="envTplPick('${esc(cid)}','${esc(t.entryId)}','${esc(entryId)}')">
+          <b>${esc(t.name)}</b><span class="meta">${(t.bodyJson.documents || []).length} PDF${(t.bodyJson.documents || []).length === 1 ? '' : 's'}
+          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}</span>
+        </button>`).join('')}
+      </div>
+    </div>
+    <div class="modal-foot"><span class="modal-status"></span>
+      <button class="btn ghost" onclick="envTplClose()">Cancel</button></div>
+  </div>`;
+  document.body.appendChild(host);
+}
+
+/* One role row of the add-mapping form: assign to an existing recipient (name
+   match preselected), bring in a new person, or skip an optional role. */
+function envAddRoleRow(env: Envelope, sl: { id: string; label: string; optional: boolean }, i: number): string {
+  const match = (env.recipients || []).find(r => (r.role || '').trim().toLowerCase() === sl.label.trim().toLowerCase());
+  const pre = match ? match.id : '__new__';
+  return `<div class="env-tpl-slot">
+    <div class="env-tpl-slot-h">${esc(sl.label)}${sl.optional ? ' <span class="env-slot-opt">optional</span>' : ''}</div>
+    <div class="env-rec">
+      <select id="env-slot-map-${i}" onchange="envAddMapChange(${i})">
+        ${(env.recipients || []).map(r => `<option value="${esc(r.id)}"${pre === r.id ? ' selected' : ''}>${esc(r.name)}${r.role ? ' — ' + esc(r.role) : ''}${pre === r.id ? ' (matched)' : ''}</option>`).join('')}
+        <option value="__new__"${pre === '__new__' ? ' selected' : ''}>New person…</option>
+        ${sl.optional ? `<option value="__skip__">Skip — leave this role out</option>` : ''}
+      </select>
+    </div>
+    <div class="env-rec" id="env-slot-new-${i}" style="${pre === '__new__' ? '' : 'display:none'}">
+      ${envPickSelect(`envSlotPick(${i},this.value)`)}
+      <input class="env-rec-name" id="env-slot-name-${i}" placeholder="Full name">
+      <input class="env-rec-email" id="env-slot-email-${i}" placeholder="Email (for email link)">
+      <select id="env-slot-kind-${i}">${ENV_KINDS.filter(k => k.v !== 'cc').map(k => `<option value="${k.v}">${esc(k.label)}</option>`).join('')}</select>
+      <input class="env-rec-order" id="env-slot-order-${i}" type="number" min="1" value="1" title="Signing order">
+    </div></div>`;
+}
+function envAddMapChange(i: number): void {
+  const sel = document.getElementById('env-slot-map-' + i) as HTMLSelectElement | null;
+  const row = document.getElementById('env-slot-new-' + i);
+  if (sel && row) row.style.display = sel.value === '__new__' ? '' : 'none';
+}
+
+/* Append the picked template to the open draft: merge recipients, copy PDFs,
+   remap and append tabs. Everything rides existing draft-editing actions. */
+async function envTplAddApply(cid: string, tplEntryId: string): Promise<void> {
+  const t = ENV_TPLS.find((x: any) => x.entryId === tplEntryId);
+  const env0 = ENV_OPEN;
+  if (!t || !env0) return;
+  const body = t.bodyJson;
+  const slots = envTplSlots(body);
+  const g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
+  // resolve each slot: existing rid | new person | skipped
+  const slotPick: { slot: any; rid?: string; add?: any }[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    const sel = (document.getElementById('env-slot-map-' + i) as HTMLSelectElement | null);
+    const v = sel ? sel.value : '__new__';
+    if (v === '__skip__') continue;
+    if (v === '__new__') {
+      const name = g('env-slot-name-' + i) ? g('env-slot-name-' + i)!.value.trim() : '';
+      if (!name) {
+        if (slots[i].optional) continue; // blank optional = skipped
+        toast('"' + slots[i].label + '" needs a person — pick an existing recipient or enter a name.'); return;
+      }
+      slotPick.push({ slot: slots[i], add: {
+        role: slots[i].label, name: name,
+        email: g('env-slot-email-' + i) ? g('env-slot-email-' + i)!.value.trim() : '',
+        kind: (document.getElementById('env-slot-kind-' + i) as HTMLSelectElement | null)?.value || 'external',
+        routingOrder: Math.max(1, Number(g('env-slot-order-' + i)?.value) || 1),
+      } });
+    } else slotPick.push({ slot: slots[i], rid: v });
+  }
+  const btn = document.getElementById('env-tpl-create') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    let env = env0;
+    const adds = slotPick.filter(sp => sp.add);
+    if (adds.length) {
+      envTplStatus('Adding ' + adds.length + ' recipient' + (adds.length === 1 ? '' : 's') + '…');
+      // existing recipients go back verbatim WITH ids (the server preserves state
+      // by id); new ones follow and come back in order after them.
+      const keep = (env.recipients || []).map(r => ({ id: r.id, role: r.role, name: r.name, email: r.email, kind: r.kind, routingOrder: r.routingOrder, accessCode: (r as any).accessCode }));
+      env = await apiSetEnvelopeRecipients(cid, env.entryId, keep.concat(adds.map(a => a.add)), env.title);
+      for (let j = 0; j < adds.length; j++) {
+        const nr = env.recipients[keep.length + j];
+        if (nr) adds[j].rid = nr.id;
+      }
+    }
+    const slotToRid: { [slot: string]: string } = {};
+    for (const sp of slotPick) if (sp.rid) slotToRid[sp.slot.id] = sp.rid;
+    const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (slotToRid[slot] || null);
+    const newTabs: any[] = [];
+    const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+    for (let di = 0; di < docs.length; di++) {
+      const doc = docs[di];
+      envTplStatus(`Copying "${doc.name}" (${di + 1}/${docs.length})…`);
+      const resp = await fetch(doc.sourceUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Could not fetch template PDF "' + doc.name + '" (' + resp.status + ').');
+      const b64 = envBufToB64(await resp.arrayBuffer());
+      env = await apiUploadEnvelopeDoc(cid, env.entryId, doc.name, b64, doc.pages || 0);
+      const newDoc = env.documents[env.documents.length - 1];
+      for (const tb of (body.tabs || [])) {
+        if (tb.docId !== doc.id) continue;
+        const rid = mapSlot(String(tb.recipientId));
+        if (!rid) continue;
+        newTabs.push({ ...tb, id: 't_' + Math.random().toString(36).slice(2, 10), docId: newDoc.id, recipientId: rid });
+      }
+    }
+    envTplStatus('Saving ' + newTabs.length + ' fields…');
+    env = await apiSaveEnvelopeTabs(cid, env.entryId, (env.tabs || []).concat(newTabs));
+    envTplClose();
+    ENV_OPEN = env; ENV_OPEN_CID = cid;
+    await loadEnvelopes(cid, true);
+    toast('"' + t.name + '" added — ' + docs.length + ' document' + (docs.length === 1 ? '' : 's') + ', ' + newTabs.length + ' fields.');
+    render();
+  } catch (e: any) {
+    envTplStatus('');
+    if (btn) btn.disabled = false;
+    toast('Add failed: ' + (e && e.message ? e.message : String(e)));
+  }
+}
+
 /* ---- apply a template (phase 5) ---- */
 let ENV_TPLS: any[] = [];
 function envTplClose(): void { const m = document.getElementById('__envTpl'); if (m) m.remove(); }
@@ -167,7 +305,7 @@ function envTplSlots(body: any): { id: string; label: string; optional: boolean 
   return out;
 }
 
-async function envTplPick(cid: string, tplEntryId: string): Promise<void> {
+async function envTplPick(cid: string, tplEntryId: string, addTo?: string): Promise<void> {
   const t = ENV_TPLS.find((x: any) => x.entryId === tplEntryId);
   if (!t) return;
   // Contacts feed the per-slot picker — have them ready before the modal draws.
@@ -176,6 +314,20 @@ async function envTplPick(cid: string, tplEntryId: string): Promise<void> {
   const slots = envTplSlots(t.bodyJson);
   const m = document.getElementById('__envTpl');
   if (!m) return;
+  if (addTo && ENV_OPEN) {
+    // ADD mode: map the template's roles onto the envelope's existing recipients.
+    m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(640px,94vw)">
+      <div class="modal-head"><div><b>${esc(t.name)}</b><p>Who fills each of its roles on this envelope?</p></div>
+        <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
+      <div class="modal-body">
+        ${slots.map((sl, i) => envAddRoleRow(ENV_OPEN!, sl, i)).join('')}
+      </div>
+      <div class="modal-foot"><span class="modal-status" id="env-tpl-status"></span>
+        <button class="btn ghost" onclick="envTplClose()">Cancel</button>
+        <button class="btn primary" id="env-tpl-create" onclick="envTplAddApply('${esc(cid)}','${esc(tplEntryId)}')">Add to envelope</button></div>
+    </div>`;
+    return;
+  }
   m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(640px,94vw)">
     <div class="modal-head"><div><b>${esc(t.name)}</b><p>Who fills each role?</p></div>
       <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
@@ -210,7 +362,7 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
   const g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
   const title = (g('env-tpl-title') && g('env-tpl-title')!.value.trim()) || t.name;
   const recipients = slots.map((sl, i) => ({
-    role: sl.id,
+    role: sl.label,
     name: g('env-slot-name-' + i) ? g('env-slot-name-' + i)!.value.trim() : '',
     email: g('env-slot-email-' + i) ? g('env-slot-email-' + i)!.value.trim() : '',
     kind: (document.getElementById('env-slot-kind-' + i) as HTMLSelectElement | null)?.value || 'external',
@@ -221,16 +373,18 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
     if (!recipients[i].name && !slots[i].optional) { toast('"' + slots[i].label + '" needs a name (or mark the role optional in the template).'); return; }
   }
   const skipped = recipients.filter((r, i) => !r.name && slots[i].optional).length;
-  const filled = recipients.filter(r => !!r.name);
+  const filled: any[] = []; const filledSlotIds: string[] = [];
+  recipients.forEach((r, i) => { if (r.name) { filled.push(r); filledSlotIds.push(slots[i].id); } });
   const btn = document.getElementById('env-tpl-create') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
     envTplStatus('Creating envelope…');
     let env = await apiCreateEnvelope(cid, title);
     env = await apiSetEnvelopeRecipients(cid, env.entryId, filled, title);
-    // slot id → real recipient id (setEnvelopeRecipients preserves `role`)
+    // slot id → real recipient id: the server materializes recipients in the
+    // order sent, so pair by index (role text is display/matching only).
     const slotToRid: { [slot: string]: string } = {};
-    for (const r of env.recipients) if (r.role) slotToRid[r.role] = r.id;
+    for (let ri = 0; ri < filledSlotIds.length && ri < env.recipients.length; ri++) slotToRid[filledSlotIds[ri]] = env.recipients[ri].id;
     const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (slotToRid[slot] || null);
     const allTabs: any[] = [];
     const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
@@ -346,7 +500,8 @@ function envDetail(c: Client, env: Envelope): string {
       <div>
         <button class="btn ghost" onclick="envClose()">${ic('chevL', 14)} All agreements</button>
         ${editable ? `<a class="btn outline" href="#/designer/env/${esc(c.id)}/${esc(env.entryId)}">${ic('edit', 15)} Place fields${env.tabs && env.tabs.length ? ' (' + env.tabs.length + ')' : ''}</a>` : ''}
-        ${draft ? `<button class="btn primary" onclick="envSendOpen('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
+        ${draft ? `<button class="btn outline" onclick="envAddTpl('${esc(c.id)}','${esc(env.entryId)}')" title="Append another template's documents and fields to this envelope (DocuSign-style composite)">${ic('plus', 15)} Add from template</button>
+        <button class="btn primary" onclick="envSendOpen('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
         ${inflight && !ENV_CORRECT ? `<button class="btn outline" onclick="envCorrectStart()" title="Edit recipients or move fields on this sent envelope">${ic('edit', 15)} Correct</button>` : ''}
         ${ENV_CORRECT ? `<button class="btn primary" onclick="envCorrectDone('${esc(c.id)}','${esc(env.entryId)}')">Done correcting</button>` : ''}
         ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
