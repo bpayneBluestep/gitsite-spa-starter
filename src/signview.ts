@@ -367,14 +367,26 @@ function svSaveNow(manual: boolean): void {
 }
 function svSaveLater(): void { svSaveNow(true); }
 
-/* NEXT: scroll to the first incomplete required tab and pulse it. */
+/* NEXT: scroll to the first incomplete required tab and pulse it. If that tab
+   sits in a lazy document that hasn't rendered yet, its element doesn't exist —
+   render the document now, then land on the tab. */
 function svNext(): void {
   const missing = svMissing();
   if (!missing.length) return;
-  const el = document.querySelector(`[data-svtab="${missing[0].id}"]`) as HTMLElement | null;
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  const t = missing[0];
+  const go = (el: HTMLElement) => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  };
+  const el = document.querySelector(`[data-svtab="${t.id}"]`) as HTMLElement | null;
+  if (el) { go(el); return; }
+  const pageEl = (document.querySelector(`.sv-page[data-doc="${t.docId}"][data-page="${t.page}"]`)
+    || document.querySelector(`.sv-page[data-doc="${t.docId}"]`)) as HTMLElement | null;
+  if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  svRenderDoc(t.docId).then(() => {
+    const el2 = document.querySelector(`[data-svtab="${t.id}"]`) as HTMLElement | null;
+    if (el2) go(el2);
+  });
 }
 
 async function svFinish(): Promise<void> {
