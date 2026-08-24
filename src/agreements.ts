@@ -511,9 +511,11 @@ function envSendOpen(cid: string, entryId: string): void {
   // readEnvelope always reports a routing (parallel by default), so an unsent draft
   // can't be told apart by its snapshot — default the checkbox ON for drafts.
   const seq = env.status === 'Draft' ? true : env.routing === 'sequential';
+  const hasSender = envSenderTabs(env).length > 0;
   const host = document.createElement('div');
   host.className = 'modal-overlay'; host.id = '__envSendOpts';
-  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(520px,94vw)">
+  const w = hasSender ? 'min(880px,96vw)' : 'min(520px,94vw)';
+  host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:${w};max-width:${w}">
     <div class="modal-head"><div><b>Send “${esc(env.title)}”</b><p>Each recipient gets a personal signing link by email.</p></div>
       <button class="ico-x" onclick="envSendClose()">${ic('x', 18)}</button></div>
     <div class="modal-body">
@@ -523,14 +525,10 @@ function envSendOpen(cid: string, entryId: string): void {
         <input id="env-opt-exp" type="number" min="0" value="${Number(env.expireDays) || 30}"></div>
       <div class="field"><label>Remind pending signers every (days — 0 = off)</label>
         <input id="env-opt-rem" type="number" min="0" value="${env.remindEveryDays == null ? 3 : Number(env.remindEveryDays)}"></div>
-      ${envSenderTabs(env).length ? `<div class="env-sender-fields">
-        <div class="agr-roles-h">Your fields (stamped onto the documents)</div>
-        ${envSenderTabs(env).map(t => {
-          const saved = ((env.senderValues || {}) as any)[t.id];
-          const auto = !saved && t.source ? envPrefillValue(cid, t.source) : '';
-          return `<div class="field"><label>${esc(t.label || 'Sender field')}${t.required !== false ? ' *' : ''}${auto ? ' <span class="env-auto-tag">auto-filled</span>' : ''}</label>
-          <input id="env-sv-${esc(t.id)}" value="${esc(saved || auto || '')}"></div>`;
-        }).join('')}
+      ${hasSender ? `<div class="env-sender-fields">
+        <div class="agr-roles-h">Your fields — fill them in on the page</div>
+        <p class="meta env-sv-hint">These stamp onto the documents before anyone signs. Yellow = auto-filled from the client record; edit anything.</p>
+        <div id="env-sv-pane" class="env-sv-pane"><div class="env-sv-loading">Rendering pages…</div></div>
       </div>` : ''}
     </div>
     <div class="modal-foot"><span class="modal-status"></span>
@@ -538,6 +536,7 @@ function envSendOpen(cid: string, entryId: string): void {
       <button class="btn primary" onclick="envSendConfirm('${esc(cid)}','${esc(entryId)}')">${ic('mail', 15)} Send</button></div>
   </div>`;
   document.body.appendChild(host);
+  if (hasSender) envSendRenderPages(cid);
 }
 function envSendClose(): void { const m = document.getElementById('__envSendOpts'); if (m) m.remove(); }
 function envSendConfirm(cid: string, entryId: string): void {
@@ -548,8 +547,12 @@ function envSendConfirm(cid: string, entryId: string): void {
   const env = ENV_OPEN;
   for (const t of (env ? envSenderTabs(env) : [])) {
     const inp = document.getElementById('env-sv-' + t.id) as HTMLInputElement | null;
-    const v = inp ? inp.value.trim() : '';
-    if (t.required !== false && !v) { toast('Fill in "' + (t.label || 'the sender field') + '" before sending.'); return; }
+    const v = inp ? (t.type === 'checkbox' ? (inp.checked ? true : '') : inp.value.trim()) : '';
+    if (t.required !== false && !v && t.type !== 'checkbox') {
+      toast('Fill in the highlighted field before sending.');
+      if (inp) { inp.classList.add('env-sv-miss'); inp.scrollIntoView({ block: 'center' }); inp.focus(); }
+      return;
+    }
     senderValues[t.id] = v;
   }
   const opts = {
@@ -613,6 +616,71 @@ function envSlotPick(i: number, v: string): void {
 
 function envSenderTabs(env: Envelope): any[] {
   return (env.tabs || []).filter((t: any) => t.recipientId === '__sender__');
+}
+
+/* On-page sender fill: the send dialog renders ONLY the pages that carry sender
+   tabs and overlays a real input at each tab's spot — the sender sees exactly
+   where each value lands (a bare "Sender field *" list is unusable past one
+   field). Same pdfgeo geometry the signer sees, so what you type is what stamps. */
+async function envSendRenderPages(cid: string): Promise<void> {
+  const env = ENV_OPEN;
+  const pane = document.getElementById('env-sv-pane');
+  if (!env || !pane) return;
+  const tabs = envSenderTabs(env);
+  const docs = (env.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+  const spots: { doc: any; page: number }[] = [];
+  for (const doc of docs) {
+    const pages: number[] = [];
+    for (const t of tabs) if (t.docId === doc.id && pages.indexOf(t.page) < 0) pages.push(t.page);
+    pages.sort((a, b) => a - b).forEach(pg => spots.push({ doc: doc, page: pg }));
+  }
+  if (!spots.length) { pane.innerHTML = ''; return; }
+  pane.innerHTML = spots.map(sp => `<div class="env-sv-pagelabel">${esc(sp.doc.name)} — page ${sp.page}</div>
+    <div class="env-sv-page" data-doc="${esc(sp.doc.id)}" data-page="${sp.page}"><canvas></canvas><div class="env-sv-overlay"></div></div>`).join('');
+  const width = Math.min(820, Math.max(320, (pane.clientWidth || 820)));
+  const byDoc: { [k: string]: any } = {};
+  const els = pane.querySelectorAll('.env-sv-page');
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i] as HTMLElement;
+    if (!document.getElementById('__envSendOpts')) return; // dialog closed mid-render
+    const docId = el.getAttribute('data-doc') || '';
+    const pageNum = Number(el.getAttribute('data-page')) || 1;
+    const doc = docs.find((d: any) => d.id === docId);
+    const canvas = el.querySelector('canvas') as HTMLCanvasElement;
+    const pageTabs = tabs.filter((t: any) => t.docId === docId && t.page === pageNum);
+    try {
+      if (!byDoc[docId]) byDoc[docId] = await pdfOpen(doc.sourceUrl);
+      const dims = await pdfRenderPage(byDoc[docId], pageNum, canvas, width);
+      el.style.width = canvas.style.width; el.style.height = canvas.style.height;
+      const scale = geoScale(width, dims.wPt);
+      const overlay = el.querySelector('.env-sv-overlay') as HTMLElement;
+      for (const t of pageTabs) {
+        const wrap = document.createElement('div');
+        wrap.className = 'env-sv-tab';
+        geoApplyTabRect(wrap, t, scale);
+        wrap.innerHTML = envSenderInputHtml(cid, env, t);
+        overlay.appendChild(wrap);
+      }
+    } catch (_e) {
+      // page didn't render (bad PDF, network) — fall back to labeled inputs so send still works
+      el.classList.add('env-sv-err');
+      el.style.width = 'auto'; el.style.height = 'auto';
+      el.innerHTML = '<div class="env-sv-loading">Couldn\'t render this page — fill the fields here instead.</div>'
+        + pageTabs.map((t: any) => `<div class="field" style="padding:0 12px 10px"><label>${esc(t.label || 'Sender field')}${t.required !== false ? ' *' : ''}</label>
+          <input id="env-sv-${esc(t.id)}"></div>`).join('');
+    }
+  }
+}
+
+/* The editable control for one sender tab on the send-dialog page overlay. */
+function envSenderInputHtml(cid: string, env: Envelope, t: any): string {
+  const saved = ((env.senderValues || {}) as any)[t.id];
+  if (t.type === 'checkbox') return `<input type="checkbox" id="env-sv-${esc(t.id)}" ${saved ? 'checked' : ''} title="${esc(t.label || 'Sender checkbox')}">`;
+  const auto = !saved && t.source ? envPrefillValue(cid, t.source) : '';
+  return `<input id="env-sv-${esc(t.id)}" class="${auto ? 'env-sv-auto' : ''}" value="${esc(saved || auto || '')}"
+    placeholder="${esc(t.label || (t.required !== false ? 'required' : ''))}"
+    title="${esc(t.label || 'Sender field')}${t.required !== false ? ' (required)' : ''}"
+    oninput="this.classList.remove('env-sv-auto','env-sv-miss')">`;
 }
 
 /* ---- auto-filled sender fields (phase 7) ----
