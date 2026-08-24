@@ -242,3 +242,9 @@
 /* completed-envelope download list (split output) */
 .sg-dl-list{display:flex;flex-direction:column;gap:8px;margin:12px 0;align-items:flex-start}
 .sg-dl-list .sg-btn{width:auto}
+
+/* finish-later + lazy rendering */
+.sv-resume{background:#fff8e6;border:1px solid #e8d9a0;color:#6b5814;border-radius:8px;padding:10px 14px;font-size:13px;margin:0 0 12px}
+.sv-savenote{font-size:12px;color:#7a7a7a;margin-right:auto;padding-left:10px}
+.sv-page-loading{min-height:420px;position:relative}
+.sv-page-loading::after{content:'Loading page…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9a9a9a;font-size:13px}

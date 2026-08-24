@@ -63,7 +63,7 @@
   /* ── load ─────────────────────────────────────────────────────────────────── */
   var ACCESS_CODE = '';
   function load(): void {
-    var url = INGESTER + '?action=load&entity=' + encodeURIComponent(meta.entity)
+    var url = INGESTER + '?action=load&lazy=1&entity=' + encodeURIComponent(meta.entity)
       + '&clientid=' + encodeURIComponent(meta.clientid)
       + '&logid=' + encodeURIComponent(meta.logid)
       + '&token=' + encodeURIComponent(meta.token)
@@ -134,6 +134,25 @@ function renderEnvelopeSign(d: any): void {
     container: document.getElementById('sv-host')!,
     env: d,
     meId: readOnly ? '' : (me.id || ''),
+    progress: me.progress || null,
+    fetchDoc: function (docId: string) {
+      return fetch(INGESTER, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'docBytes', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token, code: ACCESS_CODE, docId: docId }),
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j || !j.ok || !j.data || !j.data.dataB64) throw new Error((j && j.error) || 'Document failed to load.');
+        return j.data.dataB64 as string;
+      });
+    },
+    saveProgress: readOnly ? undefined : function (p) {
+      return fetch(INGESTER, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'saveProgress', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token, code: ACCESS_CODE, tabValues: p.tabValues, typedName: p.typedName, hasAdopted: p.hasAdopted }),
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || 'Save failed.');
+        return j.data || j;
+      });
+    },
     submit: function (p) {
       var consent = document.getElementById('sg-consent');
       if (!consent || !(consent as HTMLInputElement).checked) { return Promise.reject(new Error('Please check the consent box to sign.')); }

@@ -357,6 +357,9 @@ function apiVerifyEnvelope(clientId: string, entryId: string): Promise<any> {
 function apiSignEnvelope(clientId: string, entryId: string, recipientId: string, signatureData: string, typedName: string, tabValues: Record<string, any>, initialsData?: string): Promise<any> {
   return maestroPost('signEnvelope', { id: clientId, entryId: entryId, recipientId: recipientId, signatureData: signatureData, initialsData: initialsData || '', typedName: typedName, tabValues: tabValues, entity: agrEntity(clientId) });
 }
+function apiSaveEnvelopeProgress(clientId: string, entryId: string, recipientId: string, tabValues: Record<string, any>, typedName: string, hasAdopted: boolean): Promise<any> {
+  return maestroPost('saveEnvelopeProgress', { id: clientId, entryId: entryId, recipientId: recipientId, tabValues: tabValues, typedName: typedName, hasAdopted: hasAdopted, entity: agrEntity(clientId) });
+}
 function apiSaveEnvelopeTabs(clientId: string, entryId: string, tabs: any[]): Promise<any> {
   return maestroPost('saveEnvelopeTabs', { id: clientId, entryId: entryId, tabs: tabs, entity: agrEntity(clientId) });
 }

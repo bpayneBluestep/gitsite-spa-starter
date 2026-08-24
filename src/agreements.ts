@@ -1192,6 +1192,8 @@ function envSignNow(cid: string, entryId: string, recipientId?: string): void {
     container: document.getElementById('sv-host')!,
     env: env,
     meId: me.id,
+    progress: (me as any).progress || null,
+    saveProgress: (p: any) => apiSaveEnvelopeProgress(cid, entryId, me.id, p.tabValues, p.typedName, p.hasAdopted),
     submit: (p) => {
       const consent = document.getElementById('env-consent') as HTMLInputElement | null;
       if (!consent || !consent.checked) return Promise.reject(new Error('Please check the consent box.'));
