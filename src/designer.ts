@@ -359,6 +359,7 @@ function dsgMakeInteractive(el: HTMLElement, tab: DsgTab): void {
         geoApplyTabRect(el, tab, scale);
         dsgTouched();
       }
+      dsgPropsPosition();
     };
     el.setPointerCapture(ev.pointerId);
     el.addEventListener('pointermove', onMove);
@@ -488,11 +489,35 @@ function dsgPropsRefresh(): void {
   const props = document.getElementById('dsg-props');
   if (!props || !d) return;
   props.innerHTML = dsgPropsHtml();
-  // The editor is a FLOATING panel (top-right, always on screen) — the old
-  // sidebar placement buried it under the fold, so selecting a field looked
-  // like it did nothing. Visible exactly while something is selected.
+  // The editor is a POPOVER anchored beside the selected field — right where the
+  // user just clicked, instead of a corner they may never look at.
   props.classList.toggle('dsg-hidden', !d.selected);
+  dsgPropsPosition();
 }
+
+/* Place the popover beside the selected tab: to its right, flipping left when
+   the viewport runs out, clamped vertically. Re-run on scroll/resize/drag-end. */
+function dsgPropsPosition(): void {
+  const d = DSG;
+  const panel = document.getElementById('dsg-props');
+  if (!d || !panel || !d.selected || panel.classList.contains('dsg-hidden')) return;
+  const el = document.querySelector('[data-tab="' + d.selected + '"]') as HTMLElement | null;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const pw = panel.offsetWidth || 280;
+  const ph = panel.offsetHeight || 240;
+  let left = r.right + 14;
+  if (left + pw > window.innerWidth - 12) left = r.left - pw - 14;
+  if (left < 12) { left = Math.max(12, Math.min(window.innerWidth - pw - 12, r.left)); }
+  let top = r.top - 10;
+  top = Math.max(64, Math.min(window.innerHeight - ph - 12, top));
+  panel.style.left = left + 'px';
+  panel.style.top = top + 'px';
+  panel.style.right = 'auto';
+}
+// Keep the popover glued to its field while the page scrolls or the window resizes.
+document.addEventListener('scroll', function () { if (location.hash.indexOf('/designer/') >= 0) dsgPropsPosition(); }, true);
+window.addEventListener('resize', function () { if (location.hash.indexOf('/designer/') >= 0) dsgPropsPosition(); });
 function dsgDeselect(): void {
   const d = DSG!; d.selected = '';
   const els = document.querySelectorAll('.dsg-tab.selected');
