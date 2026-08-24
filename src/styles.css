@@ -1271,6 +1271,7 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .env-tpl-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;
   padding:11px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);cursor:pointer}
 .env-tpl-row:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--card))}
+.env-signed-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 .env-tpl-check{flex-direction:row;align-items:center;gap:10px;cursor:pointer}
 .env-tpl-check input{flex:0 0 auto;width:16px;height:16px;accent-color:var(--accent);margin:0}
 .env-tpl-check-body{display:flex;flex-direction:column;gap:2px;text-align:left}

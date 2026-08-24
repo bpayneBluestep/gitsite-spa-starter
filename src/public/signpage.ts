@@ -112,7 +112,7 @@ function renderEnvelopeSign(d: any): void {
     + (d.orgName ? '<div class="sg-org">' + sigEsc(d.orgName) + '</div>' : '')
     + '<h1>' + sigEsc(d.title) + '</h1>'
     + '<p class="sg-hi">' + headMsg + '</p>'
-    + (d.completed ? '<p><button type="button" class="sg-btn primary" id="sg-envpdf">Download completed PDF</button></p>' : '')
+    + (d.completed ? envDownloadsHtml(d) : '')
     + '</div>'
     + '<div id="sv-host"></div>'
     + (readOnly ? ''
@@ -121,7 +121,11 @@ function renderEnvelopeSign(d: any): void {
         + ' · <button type="button" class="sg-declineline" id="sg-envwithdraw">Withdraw consent to sign electronically</button></p>')
     + '</div>');
   var pdfBtn = document.getElementById('sg-envpdf');
-  if (pdfBtn) pdfBtn.onclick = envPdfDownload;
+  if (pdfBtn) pdfBtn.onclick = function () { envPdfDownload('', null); };
+  var dls = document.querySelectorAll('.sg-dl');
+  for (var di = 0; di < dls.length; di++) {
+    (function (el: any) { el.onclick = function () { envPdfDownload(el.getAttribute('data-docid') || '', el); }; })(dls[di]);
+  }
   var decBtn = document.getElementById('sg-envdecline');
   if (decBtn) decBtn.onclick = function () { envDeclineFlow(false); };
   var wdBtn = document.getElementById('sg-envwithdraw');
@@ -154,15 +158,31 @@ function renderEnvelopeSign(d: any): void {
   });
 }
 
+/* Completed downloads, split-output era: one button per signed document plus the
+   certificate. Envelopes completed before the split keep the single merged-PDF
+   button (no per-doc signed flags on their load). */
+function envDownloadsHtml(d: any): string {
+  var docs = (d.documents || []).filter(function (x: any) { return x.signed; });
+  if (!docs.length) return '<p><button type="button" class="sg-btn primary" id="sg-envpdf">Download completed PDF</button></p>';
+  var rows = '';
+  for (var i = 0; i < docs.length; i++) {
+    rows += '<button type="button" class="sg-btn sg-dl" data-docid="' + sigEsc(docs[i].id) + '">' + sigEsc(docs[i].name) + ' — signed</button>';
+  }
+  rows += '<button type="button" class="sg-btn primary sg-dl" data-docid="">Certificate of completion</button>';
+  return '<div class="sg-dl-list">' + rows + '</div>';
+}
+
 /* Completed-envelope PDF: the bytes ride a token-gated response (the anonymous
-   /download wall), then save via a blob link. */
-function envPdfDownload(): void {
-  var btn = document.getElementById('sg-envpdf') as HTMLButtonElement | null;
+   /download wall), then save via a blob link. docId picks one signed document;
+   '' fetches the certificate (or the legacy merged PDF). */
+function envPdfDownload(docId: string, btnEl: HTMLButtonElement | null): void {
+  var btn = btnEl || (document.getElementById('sg-envpdf') as HTMLButtonElement | null);
+  var orig = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
-  var restore = function () { if (btn) { btn.disabled = false; btn.textContent = 'Download completed PDF'; } };
+  var restore = function () { if (btn) { btn.disabled = false; btn.textContent = orig; } };
   fetch(INGESTER, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'pdf', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token, code: ACCESS_CODE }),
+    body: JSON.stringify({ action: 'pdf', entity: meta.entity, clientid: meta.clientid, logid: meta.logid, token: meta.token, code: ACCESS_CODE, docId: docId || '' }),
   })
     .then(function (r) { return r.json(); })
     .then(function (j) {

@@ -688,7 +688,7 @@ function envDetail(c: Client, env: Envelope): string {
         <button class="btn primary" onclick="envSendOpen('${esc(c.id)}','${esc(env.entryId)}')">${ic('mail', 15)} Send</button>` : ''}
         ${inflight && !ENV_CORRECT ? `<button class="btn outline" onclick="envCorrectStart()" title="Edit recipients or move fields on this sent envelope">${ic('edit', 15)} Correct</button>` : ''}
         ${ENV_CORRECT ? `<button class="btn primary" onclick="envCorrectDone('${esc(c.id)}','${esc(env.entryId)}')">Done correcting</button>` : ''}
-        ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
+        ${env.status === 'Completed' ? envSignedDownloads(env) : ''}
         ${env.status !== 'Draft' ? `<button class="btn ghost" onclick="envVerify('${esc(c.id)}','${esc(env.entryId)}')" title="Recompute the audit hash chain and completion hash">${ic('check', 14)} Verify</button>` : ''}
         ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}')">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
@@ -951,6 +951,20 @@ function envSlotPick(i: number, v: string): void {
   if (g('env-slot-name-' + i)) (g('env-slot-name-' + i) as HTMLInputElement).value = o.name;
   if (g('env-slot-email-' + i)) (g('env-slot-email-' + i) as HTMLInputElement).value = o.email;
   if (g('env-slot-kind-' + i)) (g('env-slot-kind-' + i) as HTMLSelectElement).value = o.kind;
+}
+
+/* Completed downloads, split-output era: one signed PDF per document (Files
+   entries) + the certificate (the signedPdf DocumentLink). Envelopes completed
+   before the split keep their single merged PDF. */
+function envSignedDownloads(env: Envelope): string {
+  const signed = (env.documents || []).filter((d: any) => d.signedUrl);
+  if (!signed.length) {
+    return env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : '';
+  }
+  return `<div class="env-signed-list">
+    ${signed.map((d: any) => `<button class="btn outline sm" onclick="filesOpen('${esc(d.signedUrl)}')">${ic('download', 14)} ${esc(d.name)} — signed</button>`).join('')}
+    ${env.signedPdf ? `<button class="btn primary sm" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 14)} Certificate of completion</button>` : ''}
+  </div>`;
 }
 
 function envSenderTabs(env: Envelope): any[] {

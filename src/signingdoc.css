@@ -238,3 +238,7 @@
 .sg-disc-acts{text-align:center;margin:14px 0 6px}
 .sg-code-input{font:16px/1.2 inherit;padding:9px 12px;border:1.5px solid #cfd4da;border-radius:8px;width:200px;text-align:center}
 .sg-code-bad{color:#b3261e;font-size:13px}
+
+/* completed-envelope download list (split output) */
+.sg-dl-list{display:flex;flex-direction:column;gap:8px;margin:12px 0;align-items:flex-start}
+.sg-dl-list .sg-btn{width:auto}
