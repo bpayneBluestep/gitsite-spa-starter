@@ -124,9 +124,12 @@ async function svRenderPages(): Promise<void> {
         svRenderDoc((en.target as HTMLElement).getAttribute('data-doc') || '');
       }
     }, { rootMargin: '2400px 0px' });
+    // Observe EVERY placeholder page, not just each doc's first: an instant
+    // jump (End key, scrollbar drag) can land mid-doc without the first page
+    // ever entering the margin, and the doc would never render.
     for (let i = 1; i < docs.length; i++) {
-      const first = host.container.querySelector(`.sv-page[data-doc="${docs[i].id}"]`);
-      if (first) io.observe(first);
+      const els2 = host.container.querySelectorAll(`.sv-page[data-doc="${docs[i].id}"]`);
+      for (let j = 0; j < els2.length; j++) io.observe(els2[j]);
     }
   } else {
     for (let i = 1; i < docs.length; i++) await svRenderDoc(docs[i].id);
