@@ -114,7 +114,8 @@ function envList(c: Client, rows: any[]): string {
 async function envNew(cid: string): Promise<void> {
   // Offer templates first — dragging 40 fields per envelope is what templates kill.
   let tpls: any[] = [];
-  try { tpls = ((await apiListAgreementTemplates()) || []).filter((t: any) => t.bodyJson && t.bodyJson.schemaVersion === 3 && (t.bodyJson.documents || []).length && t.status !== 'Archived'); }
+  // Only ACTIVE templates are offered for sending — Draft is the authoring state.
+  try { tpls = ((await apiListAgreementTemplates()) || []).filter((t: any) => t.bodyJson && t.bodyJson.schemaVersion === 3 && (t.bodyJson.documents || []).length && t.status === 'Active'); }
   catch (_e) { tpls = []; }
   if (!tpls.length) { envNewBlank(cid); return; }
   const host = document.createElement('div');
