@@ -17,16 +17,35 @@ interface SvHost {
   container: HTMLElement;
   env: any;                 // { title, documents[], tabs[], recipients[], me }
   meId: string;             // recipient id of the person signing ('' = read-only)
-  submit: (payload: { signatureData: string; typedName: string; tabValues: Record<string, any> }) => Promise<any>;
+  submit: (payload: { signatureData: string; initialsData: string; typedName: string; tabValues: Record<string, any> }) => Promise<any>;
   onDone: (res: any) => void;
 }
 
 let SV: SvHost | null = null;
 const SV_BASE_W = 816;
 
+/* Per-field signing state: adopting a signature never fills a box by itself —
+   every signature/initials box must be individually clicked, so intent to sign
+   is recorded per spot (the DocuSign model; bulk-signing is not a thing). */
+const SV_APPLIED: { [tabId: string]: boolean } = {};
+let SV_PENDING = ''; // box that was clicked before a signature existed — apply after adopt
+
+function svApply(tabId: string): void {
+  const a = sigAdopted();
+  if (!a || !a.dataUrl) { SV_PENDING = tabId; sigClickSign(); return; }
+  SV_APPLIED[tabId] = true;
+  svRepaintMine();
+}
+function svUnapply(tabId: string): void {
+  delete SV_APPLIED[tabId];
+  svRepaintMine();
+}
+
 function svMount(host: SvHost): void {
   SV = host;
   sigResetAdopted();
+  for (const k in SV_APPLIED) delete SV_APPLIED[k];
+  SV_PENDING = '';
   sigOnChange(svRepaintMine);
   const docs = (host.env.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
   let html = '<div class="sv-doc-list">';
@@ -113,10 +132,12 @@ function svTabHtml(t: any, owner: any, mine: boolean): string {
   if (t.type === 'signature' || t.type === 'initials') {
     if (mine) {
       const a = sigAdopted();
-      if (a && a.dataUrl) return `<img class="sv-sig-img" src="${a.dataUrl}" alt="signature" onclick="sigClickSign()">`;
-      return `<button type="button" class="sv-sign-box" onclick="sigClickSign()">${t.type === 'initials' ? 'Initial' : 'Sign'}</button>`;
+      const mark = a ? (t.type === 'initials' ? (a.initialsUrl || a.dataUrl) : a.dataUrl) : '';
+      if (SV_APPLIED[t.id] && mark) return `<img class="sv-sig-img sv-applied" src="${mark}" alt="${t.type}" onclick="svUnapply('${sigEsc(t.id)}')" title="Click to remove">`;
+      return `<button type="button" class="sv-sign-box" onclick="svApply('${sigEsc(t.id)}')">${t.type === 'initials' ? 'Initial' : 'Sign'}</button>`;
     }
-    if (signed && owner.signatureData) return `<img class="sv-sig-img" src="${sigEsc(owner.signatureData)}" alt="">`;
+    const theirMark = t.type === 'initials' ? (owner.initialsData || owner.signatureData) : owner.signatureData;
+    if (signed && theirMark) return `<img class="sv-sig-img" src="${sigEsc(theirMark)}" alt="">`;
     return `<span class="sv-ph">${sigEsc(owner.name || '')}</span>`;
   }
   if (t.type === 'dateSigned') return `<span class="sv-ro">${mine ? sigToday() : (signed ? sigDateOf(owner.signedAt) : '')}</span>`;
@@ -145,6 +166,8 @@ function svTabHtml(t: any, owner: any, mine: boolean): string {
 /* Repaint only MY tabs after a signature is adopted — typed values survive. */
 function svRepaintMine(): void {
   const host = SV; if (!host) return;
+  // Adoption completes the click that opened the modal: apply THAT box only.
+  if (SV_PENDING && sigAdopted()) { SV_APPLIED[SV_PENDING] = true; SV_PENDING = ''; }
   const keep = svCollect();
   const els = host.container.querySelectorAll('.sv-tab.mine');
   const byId: { [k: string]: any } = {};
@@ -182,13 +205,13 @@ function svRestore(vals: Record<string, any>): void {
   }
 }
 
-/* Which of my required tabs are still empty? Signature adoption counts for all
-   signature/initials tabs at once (adopt once, apply everywhere). */
+/* Which of my required tabs are still empty? Signature/initials boxes count
+   ONLY when individually clicked — adoption alone completes nothing. */
 function svMissing(): any[] {
-  const host = SV!; const vals = svCollect(); const a = sigAdopted();
+  const host = SV!; const vals = svCollect();
   return (host.env.tabs || []).filter((t: any) => {
     if (t.recipientId !== host.meId || t.required === false) return false;
-    if (t.type === 'signature' || t.type === 'initials') return !(a && a.dataUrl);
+    if (t.type === 'signature' || t.type === 'initials') return !SV_APPLIED[t.id];
     if (t.type === 'dateSigned' || t.type === 'name') return false; // auto
     const v = vals[t.id];
     if (t.type === 'checkbox') return v !== true;
@@ -226,10 +249,17 @@ async function svFinish(): Promise<void> {
   const btn = document.getElementById('sv-finish') as HTMLButtonElement | null;
   if (btn) { btn.disabled = true; btn.textContent = 'Signing…'; }
   try {
+    // Per-box applied state rides in tabValues (true = clicked, false = left
+    // blank) so the stamper only stamps boxes this signer actually clicked.
+    const tv = svCollect();
+    for (const t of (host.env.tabs || [])) {
+      if (t.recipientId === host.meId && (t.type === 'signature' || t.type === 'initials')) tv[t.id] = !!SV_APPLIED[t.id];
+    }
     const res = await host.submit({
       signatureData: a ? a.dataUrl : '',
+      initialsData: a && a.initialsUrl ? a.initialsUrl : '',
       typedName: a ? a.typedName : '',
-      tabValues: svCollect(),
+      tabValues: tv,
     });
     host.onDone(res);
   } catch (e: any) {

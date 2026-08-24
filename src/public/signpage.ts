@@ -291,7 +291,7 @@ function renderEnvelopeSign(d: any): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'submit', entity: meta.entity, clientid: meta.clientid, logid: meta.logid,
-          token: meta.token, code: ACCESS_CODE, consent: true, signatureData: p.signatureData,
+          token: meta.token, code: ACCESS_CODE, consent: true, signatureData: p.signatureData, initialsData: p.initialsData || '',
           typedName: p.typedName, tabValues: p.tabValues,
         }),
       }).then(function (r) { return r.json(); }).then(function (j) {

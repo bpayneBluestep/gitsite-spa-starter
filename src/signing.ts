@@ -88,7 +88,7 @@ function sigDateOf(iso?: string): string {
    One per page load. Held here rather than in either surface so the modal, the
    inline placeholders and the submit handler all agree without the two callers
    each inventing their own state. */
-interface SigAdopted { dataUrl: string; typedName: string }
+interface SigAdopted { dataUrl: string; typedName: string; initialsUrl?: string }
 let SIG_ADOPTED: SigAdopted | null = null;
 let SIG_ON_CHANGE: (() => void) | null = null;
 
@@ -504,7 +504,7 @@ async function sigModalAdopt(): Promise<void> {
     if (!name) { sigModalErr('Type your full name to adopt a signature.'); return; }
     const url = await sigRasterizeTyped(name, SIG_FONTS[SIG_MODAL_FONT].css);
     if (!url) { sigModalErr('Could not create the signature image. Try the Draw tab.'); return; }
-    SIG_ADOPTED = { dataUrl: await sigNormalize(url), typedName: name };
+    SIG_ADOPTED = { dataUrl: await sigNormalize(url), typedName: name, initialsUrl: await sigMakeInitials(name, SIG_FONTS[SIG_MODAL_FONT].css) };
   } else {
     if (!SIG_MODAL_PAD || !SIG_MODAL_PAD.isDrawn()) { sigModalErr('Draw your signature first.'); return; }
     // A drawn signature still needs a typed name — {{name:}} and the certificate
@@ -512,10 +512,20 @@ async function sigModalAdopt(): Promise<void> {
     // on which tab they used.
     const el = document.getElementById('__sgName') as HTMLInputElement | null;
     const name = el && el.value.trim() ? el.value.trim() : '';
-    SIG_ADOPTED = { dataUrl: await sigNormalize(SIG_MODAL_PAD.dataUrl()), typedName: name };
+    // Initials boxes get typed-style initials even for a drawn signature — there
+    // is no drawn-initials pad, and a full signature squeezed into an initials
+    // box reads as an error.
+    SIG_ADOPTED = { dataUrl: await sigNormalize(SIG_MODAL_PAD.dataUrl()), typedName: name, initialsUrl: await sigMakeInitials(name, SIG_FONTS[0].css) };
   }
   sigCloseModal();
   if (SIG_ON_CHANGE) SIG_ON_CHANGE();
+}
+
+/* "Brandon Payne" -> "BP", rendered in the signature script. '' when no name. */
+async function sigMakeInitials(name: string, cssFont: string): Promise<string> {
+  const initials = (name || '').split(/\s+/).map(w => (w.replace(/[^A-Za-z]/g, '')[0] || '')).join('').toUpperCase().slice(0, 4);
+  if (!initials) return '';
+  try { const url = await sigRasterizeTyped(initials, cssFont); return url ? await sigNormalize(url) : ''; } catch (_e) { return ''; }
 }
 
 interface SigPad {

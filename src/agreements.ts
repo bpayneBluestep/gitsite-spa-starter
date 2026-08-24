@@ -997,7 +997,7 @@ function envSignNow(cid: string, entryId: string, recipientId?: string): void {
     submit: (p) => {
       const consent = document.getElementById('env-consent') as HTMLInputElement | null;
       if (!consent || !consent.checked) return Promise.reject(new Error('Please check the consent box.'));
-      return apiSignEnvelope(cid, entryId, me.id, p.signatureData, p.typedName, p.tabValues);
+      return apiSignEnvelope(cid, entryId, me.id, p.signatureData, p.typedName, p.tabValues, p.initialsData);
     },
     onDone: async (res) => {
       envSignClose();
