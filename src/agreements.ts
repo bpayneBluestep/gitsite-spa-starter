@@ -164,9 +164,12 @@ function envTplSlots(body: any): { id: string; label: string }[] {
   return out;
 }
 
-function envTplPick(cid: string, tplEntryId: string): void {
+async function envTplPick(cid: string, tplEntryId: string): Promise<void> {
   const t = ENV_TPLS.find((x: any) => x.entryId === tplEntryId);
   if (!t) return;
+  // Contacts feed the per-slot picker — have them ready before the modal draws.
+  if (contactsState(cid).list === null) { try { await loadContacts(cid); } catch (_e) { /* picker just stays empty */ } }
+  envBuildPickOpts(cid);
   const slots = envTplSlots(t.bodyJson);
   const m = document.getElementById('__envTpl');
   if (!m) return;
@@ -178,6 +181,7 @@ function envTplPick(cid: string, tplEntryId: string): void {
       ${slots.map((sl, i) => `<div class="env-tpl-slot">
         <div class="env-tpl-slot-h">${esc(sl.label)}</div>
         <div class="env-rec">
+          ${envPickSelect(`envSlotPick(${i},this.value)`)}
           <input class="env-rec-name" id="env-slot-name-${i}" placeholder="Full name">
           <input class="env-rec-email" id="env-slot-email-${i}" placeholder="Email (for email link)">
           <select id="env-slot-kind-${i}">${ENV_KINDS.filter(k => k.v !== 'cc').map(k => `<option value="${k.v}">${esc(k.label)}</option>`).join('')}</select>
@@ -298,6 +302,7 @@ const ENV_KINDS: { v: string; label: string }[] = [
 ];
 
 function envDetail(c: Client, env: Envelope): string {
+  envBuildPickOpts(c.id);
   const draft = env.status === 'Draft';
   const inflight = env.status === 'Sent' || env.status === 'Partially Signed';
   const editable = draft || (ENV_CORRECT && inflight);
@@ -319,6 +324,7 @@ function envDetail(c: Client, env: Envelope): string {
 
   const recRows = (env.recipients || []).map((r, i) => (editable && r.status !== 'signed') ? `
     <div class="env-rec" data-i="${i}">
+      ${envPickSelect(`envRecPick(${i},this.value)`)}
       <input class="env-rec-name" value="${esc(r.name)}" placeholder="Full name" oninput="envRecChange(${i},'name',this.value)">
       <input class="env-rec-email" value="${esc(r.email)}" placeholder="Email (for email link)" oninput="envRecChange(${i},'email',this.value)">
       <select onchange="envRecChange(${i},'kind',this.value)">
@@ -553,6 +559,53 @@ function envSendConfirm(cid: string, entryId: string): void {
   };
   envSendClose();
   envSend(cid, entryId, opts);
+}
+
+/* ---- recipient picker: fill name/email from the client's CONTACTS ----
+   The contacts form already knows Mom and Dad — typing them again per envelope
+   is busywork. The picker lists contacts (relationship shown, signers first),
+   plus the client (in-person) and the logged-in consultant (in-app). */
+let ENV_PICK: { label: string; name: string; email: string; kind: string }[] = [];
+function envBuildPickOpts(cid: string): void {
+  ENV_PICK = [];
+  const st = contactsState(cid);
+  if (st.list === null && !st.loading) loadContacts(cid); // render() re-runs on arrival
+  const sorted = (st.list || []).slice().sort((a: Contact, b: Contact) => Number(!!b.signer) - Number(!!a.signer));
+  for (const ct of sorted) {
+    const nm = ((ct.first || '') + ' ' + (ct.last || '')).trim();
+    if (!nm) continue;
+    ENV_PICK.push({
+      label: nm + (ct.rel ? ' — ' + ct.rel : '') + (ct.email ? '' : ' (no email on file)'),
+      name: nm, email: ct.email || '', kind: 'external',
+    });
+  }
+  const c = typeof findClient === 'function' ? findClient(cid) : undefined;
+  if (c) ENV_PICK.push({ label: (c.first + ' ' + c.last).trim() + ' — client, signs in person', name: (c.first + ' ' + c.last).trim(), email: c.email || '', kind: 'inperson' });
+  if (typeof ME !== 'undefined' && ME) ENV_PICK.push({ label: (ME.first + ' ' + ME.last).trim() + ' — me, signs in-app', name: (ME.first + ' ' + ME.last).trim(), email: '', kind: 'consultant' });
+}
+function envPickSelect(onchange: string): string {
+  if (!ENV_PICK.length) return '';
+  return `<select class="env-rec-pick" onchange="${onchange}" title="Fill from the client's contacts">
+    <option value="">Contacts…</option>
+    ${ENV_PICK.map((o, i) => `<option value="${i}">${esc(o.label)}</option>`).join('')}
+  </select>`;
+}
+function envRecPick(i: number, v: string): void {
+  if (!ENV_OPEN || v === '') return;
+  const o = ENV_PICK[Number(v)];
+  if (!o) return;
+  const r = ENV_OPEN.recipients[i];
+  r.name = o.name; r.email = o.email; (r as any).kind = o.kind;
+  envSaveRecipients().then(() => render());
+}
+function envSlotPick(i: number, v: string): void {
+  if (v === '') return;
+  const o = ENV_PICK[Number(v)];
+  if (!o) return;
+  const g = (id: string) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+  if (g('env-slot-name-' + i)) (g('env-slot-name-' + i) as HTMLInputElement).value = o.name;
+  if (g('env-slot-email-' + i)) (g('env-slot-email-' + i) as HTMLInputElement).value = o.email;
+  if (g('env-slot-kind-' + i)) (g('env-slot-kind-' + i) as HTMLSelectElement).value = o.kind;
 }
 
 function envSenderTabs(env: Envelope): any[] {

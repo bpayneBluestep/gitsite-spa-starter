@@ -1294,3 +1294,6 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 /* phase 7: auto-filled sender fields */
 .env-auto-tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
   color:var(--accent-foreground);background:var(--accent);border-radius:99px;padding:2px 8px;margin-left:6px}
+
+/* recipient picker (fill from contacts) */
+.env-rec-pick{max-width:170px;color:var(--muted-foreground)}
