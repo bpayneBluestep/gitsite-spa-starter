@@ -115,25 +115,200 @@ async function envNew(cid: string): Promise<void> {
   try { tpls = ((await apiListAgreementTemplates()) || []).filter((t: any) => t.bodyJson && t.bodyJson.schemaVersion === 3 && (t.bodyJson.documents || []).length && t.status === 'Active'); }
   catch (_e) { tpls = []; }
   if (!tpls.length) { envNewBlank(cid); return; }
+  ENV_TPLS = tpls;
   const host = document.createElement('div');
   host.className = 'modal-overlay'; host.id = '__envTpl';
   host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
-    <div class="modal-head"><div><b>New envelope</b><p>Start from a template — documents and fields come along.</p></div>
+    <div class="modal-head"><div><b>New envelope</b><p>Pick every agreement this client needs — they combine into one envelope, one signing session.</p></div>
       <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
     <div class="modal-body">
       <div class="env-tpl-list">
-        ${tpls.map((t: any) => `<button class="env-tpl-row" onclick="envTplPick('${esc(cid)}','${esc(t.entryId)}')">
-          <b>${esc(t.name)}</b><span class="meta">${(t.bodyJson.documents || []).length} PDF${(t.bodyJson.documents || []).length === 1 ? '' : 's'}
-          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}</span>
-        </button>`).join('')}
+        ${tpls.map((t: any, i: number) => `<label class="env-tpl-row env-tpl-check">
+          <input type="checkbox" id="env-pack-t-${i}" onchange="envPackSum()">
+          <span class="env-tpl-check-body"><b>${esc(t.name)}</b><span class="meta">${(t.bodyJson.documents || []).length} PDF${(t.bodyJson.documents || []).length === 1 ? '' : 's'}
+          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}</span></span>
+        </label>`).join('')}
       </div>
     </div>
-    <div class="modal-foot"><span class="modal-status"></span>
+    <div class="modal-foot"><span class="modal-status" id="env-pack-sum">Nothing selected.</span>
       <button class="btn ghost" onclick="envTplClose()">Cancel</button>
-      <button class="btn outline" onclick="envTplClose(); envNewBlank('${esc(cid)}')">Blank envelope</button></div>
+      <button class="btn outline" onclick="envTplClose(); envNewBlank('${esc(cid)}')">Blank envelope</button>
+      <button class="btn primary" id="env-pack-next" onclick="envPackNext('${esc(cid)}')" disabled>Continue</button></div>
   </div>`;
   document.body.appendChild(host);
-  ENV_TPLS = tpls;
+}
+
+/* ---- packet composition (multi-template envelopes) ----
+   Programs author ONE template per agreement; at enrollment the consultant
+   multi-selects the subset that applies and the templates compose into one
+   envelope — one recipient set, one routing order, one signing session. Roles
+   are consolidated across templates by trimmed case-insensitive name (the same
+   rule "Add from template" matches by). A near-miss like "Parent" vs
+   "Parent / Guardian" shows as two rows — visible at compose time, and NEVER
+   auto-merged (guessing wrong silently is worse than asking). */
+let ENV_PACK: { tpls: any[]; roles: { key: string; label: string; optional: boolean; from: string[] }[] } | null = null;
+
+function envPackSel(): any[] {
+  return ENV_TPLS.filter((_t: any, i: number) => {
+    const cb = document.getElementById('env-pack-t-' + i) as HTMLInputElement | null;
+    return !!(cb && cb.checked);
+  });
+}
+
+function envPackSum(): void {
+  const sel = envPackSel();
+  const docs = sel.reduce((n: number, t: any) => n + (t.bodyJson.documents || []).length, 0);
+  const flds = sel.reduce((n: number, t: any) => n + (t.bodyJson.tabs || []).length, 0);
+  const el = document.getElementById('env-pack-sum');
+  if (el) el.textContent = sel.length
+    ? sel.length + ' template' + (sel.length === 1 ? '' : 's') + ' · ' + docs + ' PDF' + (docs === 1 ? '' : 's') + ' · ' + flds + ' field' + (flds === 1 ? '' : 's')
+    : 'Nothing selected.';
+  const btn = document.getElementById('env-pack-next') as HTMLButtonElement | null;
+  if (btn) btn.disabled = !sel.length;
+}
+
+function envPackNext(cid: string): void {
+  const sel = envPackSel();
+  if (!sel.length) return;
+  // One template = the proven single-template flow, unchanged.
+  if (sel.length === 1) { envTplPick(cid, sel[0].entryId); return; }
+  envPackRoles(cid, sel);
+}
+
+/* Consolidated-role assignment step. `optional` only survives if the role is
+   optional in EVERY template that needs it — required anywhere wins. */
+async function envPackRoles(cid: string, sel: any[]): Promise<void> {
+  if (contactsState(cid).list === null) { try { await loadContacts(cid); } catch (_e) { /* picker just stays empty */ } }
+  envBuildPickOpts(cid);
+  const roles: { key: string; label: string; optional: boolean; from: string[] }[] = [];
+  const byKey: { [k: string]: { key: string; label: string; optional: boolean; from: string[] } } = {};
+  for (const t of sel) {
+    for (const sl of envTplSlots(t.bodyJson)) {
+      const key = sl.label.trim().toLowerCase();
+      let r = byKey[key];
+      if (!r) { r = { key: key, label: sl.label, optional: sl.optional, from: [] }; byKey[key] = r; roles.push(r); }
+      if (!sl.optional) r.optional = false;
+      if (r.from.indexOf(t.name) < 0) r.from.push(t.name);
+    }
+  }
+  ENV_PACK = { tpls: sel, roles: roles };
+  const m = document.getElementById('__envTpl');
+  if (!m) return;
+  m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(640px,94vw)">
+    <div class="modal-head"><div><b>Who signs?</b><p>These ${sel.length} templates need ${roles.length} role${roles.length === 1 ? '' : 's'}. The same name in two templates is the same person here.</p></div>
+      <button class="ico-x" onclick="envTplClose()">${ic('x', 18)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Envelope title</label><input id="env-tpl-title" placeholder="e.g. Admissions Packet"></div>
+      <p class="env-pack-note">Seeing two rows for the same person (e.g. "Parent" and "Parent / Guardian")? The templates spell that role differently — you can assign both to the same person now, and align the role names in the designer later.</p>
+      ${roles.map((r, i) => `<div class="env-tpl-slot">
+        <div class="env-tpl-slot-h">${esc(r.label)}${r.optional ? ' <span class="env-slot-opt">optional — leave blank to skip</span>' : ''}</div>
+        <div class="env-pack-from">in: ${esc(r.from.join(', '))}</div>
+        <div class="env-rec">
+          ${envPickSelect(`envSlotPick(${i},this.value)`)}
+          <input class="env-rec-name" id="env-slot-name-${i}" placeholder="Full name">
+          <input class="env-rec-email" id="env-slot-email-${i}" placeholder="Email (for email link)">
+          <select id="env-slot-kind-${i}">${ENV_KINDS.filter(k => k.v !== 'cc').map(k => `<option value="${k.v}">${esc(k.label)}</option>`).join('')}</select>
+          <input class="env-rec-order" id="env-slot-order-${i}" type="number" min="1" value="1" title="Signing order">
+        </div></div>`).join('')}
+    </div>
+    <div class="modal-foot"><span class="modal-status" id="env-tpl-status"></span>
+      <button class="btn ghost" onclick="envTplClose(); envNew('${esc(cid)}')">Back</button>
+      <button class="btn primary" id="env-tpl-create" onclick="envPackCreate('${esc(cid)}')">Create envelope</button></div>
+  </div>`;
+}
+
+/* Create the packet: one envelope, the consolidated recipients set ONCE, then
+   each template's documents copied and tabs remapped in selection order. The
+   slot→recipient mapping goes through the consolidated role KEY — never by
+   index across templates. A mid-loop failure keeps the draft valid: documents
+   copied so far stay, their tabs are saved best-effort, and the toast names
+   the template that failed. */
+async function envPackCreate(cid: string): Promise<void> {
+  const p = ENV_PACK;
+  if (!p) return;
+  const g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
+  const title = (g('env-tpl-title') && g('env-tpl-title')!.value.trim())
+    || 'Signing packet (' + p.tpls.length + ' agreements)';
+  const filled: any[] = []; const roleToIdx: { [key: string]: number } = {};
+  for (let i = 0; i < p.roles.length; i++) {
+    const r = p.roles[i];
+    const name = g('env-slot-name-' + i) ? g('env-slot-name-' + i)!.value.trim() : '';
+    if (!name) {
+      if (r.optional) continue;
+      toast('"' + r.label + '" needs a name (or mark the role optional in its templates).'); return;
+    }
+    roleToIdx[r.key] = filled.length;
+    filled.push({
+      role: r.label, name: name,
+      email: g('env-slot-email-' + i) ? g('env-slot-email-' + i)!.value.trim() : '',
+      kind: (document.getElementById('env-slot-kind-' + i) as HTMLSelectElement | null)?.value || 'external',
+      routingOrder: Math.max(1, Number(g('env-slot-order-' + i)?.value) || 1),
+    });
+  }
+  if (!filled.length) { toast('At least one signer is needed.'); return; }
+  const btn = document.getElementById('env-tpl-create') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  let env: any = null; const allTabs: any[] = []; let failedTpl = '';
+  try {
+    envTplStatus('Creating envelope…');
+    env = await apiCreateEnvelope(cid, title);
+    env = await apiSetEnvelopeRecipients(cid, env.entryId, filled, title);
+    // consolidated role key → real recipient id (server materializes in order sent)
+    const keyToRid: { [k: string]: string } = {};
+    for (const k in roleToIdx) {
+      if (!Object.prototype.hasOwnProperty.call(roleToIdx, k)) continue;
+      keyToRid[k] = env.recipients[roleToIdx[k]] ? env.recipients[roleToIdx[k]].id : '';
+    }
+    let done = 0;
+    const totalDocs = p.tpls.reduce((n: number, t: any) => n + (t.bodyJson.documents || []).length, 0);
+    for (const t of p.tpls) {
+      failedTpl = t.name;
+      const body = t.bodyJson;
+      // THIS template's slot id → consolidated role key → recipient id
+      const slotKey: { [sid: string]: string } = {};
+      for (const sl of envTplSlots(body)) slotKey[sl.id] = sl.label.trim().toLowerCase();
+      const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (keyToRid[slotKey[slot] || ''] || null);
+      const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+      for (const doc of docs) {
+        done++;
+        envTplStatus(`Copying "${doc.name}" (${done}/${totalDocs})…`);
+        const resp = await fetch(doc.sourceUrl, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Could not fetch template PDF "' + doc.name + '" (' + resp.status + ').');
+        const b64 = envBufToB64(await resp.arrayBuffer());
+        env = await apiUploadEnvelopeDoc(cid, env.entryId, doc.name, b64, doc.pages || 0);
+        const newDoc = env.documents[env.documents.length - 1];
+        for (const tb of (body.tabs || [])) {
+          if (tb.docId !== doc.id) continue;
+          const rid = mapSlot(String(tb.recipientId));
+          if (!rid) continue;
+          allTabs.push({ ...tb, id: 't_' + Math.random().toString(36).slice(2, 10), docId: newDoc.id, recipientId: rid });
+        }
+      }
+      failedTpl = '';
+    }
+    envTplStatus('Saving ' + allTabs.length + ' fields…');
+    env = await apiSaveEnvelopeTabs(cid, env.entryId, allTabs);
+    envTplClose();
+    ENV_PACK = null;
+    ENV_OPEN = env; ENV_OPEN_CID = cid;
+    await loadEnvelopes(cid, true);
+    toast('Envelope created — ' + p.tpls.length + ' agreements, ' + allTabs.length + ' fields.');
+    render();
+  } catch (e: any) {
+    // Keep what copied so far — the draft stays valid and editable.
+    if (env && allTabs.length) { try { env = await apiSaveEnvelopeTabs(cid, env.entryId, allTabs); } catch (_e2) { /* best-effort */ } }
+    envTplStatus('');
+    if (btn) btn.disabled = false;
+    const msg = e && e.message ? e.message : String(e);
+    if (env) {
+      ENV_OPEN = env; ENV_OPEN_CID = cid;
+      try { await loadEnvelopes(cid, true); } catch (_e3) { /* list refresh only */ }
+      envTplClose(); render();
+      toast((failedTpl ? '"' + failedTpl + '" failed: ' : 'Packet failed: ') + msg + ' — the draft keeps what was copied.');
+    } else {
+      toast('Create failed: ' + msg);
+    }
+  }
 }
 
 async function envNewBlank(cid: string): Promise<void> {
