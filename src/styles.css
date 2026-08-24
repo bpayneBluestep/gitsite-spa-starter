@@ -1080,12 +1080,15 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .env-doc-body{flex:1;min-width:0}
 .env-doc-acts{display:flex;gap:4px}
 .env-thumb{width:56px;height:auto;min-height:64px;border:1px solid var(--border);border-radius:4px;background:#fff;flex:0 0 auto}
-.env-rec{display:grid;grid-template-columns:1fr 1.2fr auto 64px auto;gap:6px;align-items:center;margin-bottom:8px}
+.env-rec{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.env-rec-name{flex:1 1 130px}
+.env-rec-email{flex:1.2 1 150px}
+.env-rec select{flex:0 0 auto}
 .env-rec input,.env-rec select{min-width:0;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:13px}
-.env-rec-order{text-align:center}
+.env-rec-order{flex:0 0 52px;width:52px;text-align:center}
 .env-rec-ro{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
 .env-rec-ro:last-of-type{border-bottom:0}
-@media (max-width:760px){ .env-rec{grid-template-columns:1fr 1fr;grid-auto-rows:auto} }
+
 
 /* ===== Agreement Template Builder ===== */
 .agb-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
@@ -1282,7 +1285,7 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .dsg-anchor-row input[type=number]{width:70px}
 
 /* ===== phase 6: legal hardening ===== */
-.env-rec-code{width:150px}
+.env-rec-code{flex:0 0 140px;width:140px}
 .env-disc{margin:10px 0 4px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px}
 .env-disc summary{cursor:pointer;color:var(--muted-foreground)}
 .env-disc-text{white-space:pre-wrap;font:12px/1.5 inherit;max-height:180px;overflow:auto;margin:8px 0 2px}
@@ -1296,4 +1299,4 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
   color:var(--accent-foreground);background:var(--accent);border-radius:99px;padding:2px 8px;margin-left:6px}
 
 /* recipient picker (fill from contacts) */
-.env-rec-pick{max-width:170px;color:var(--muted-foreground)}
+.env-rec-pick{flex:0 0 118px;max-width:118px;color:var(--muted-foreground)}
