@@ -1290,3 +1290,7 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .env-verify-line.good{background:color-mix(in srgb,#1a7f37 10%,var(--card));color:#1a7f37}
 .env-verify-line.bad{background:color-mix(in srgb,#b3261e 10%,var(--card));color:#b3261e}
 .env-verify-line code{font-size:12px}
+
+/* phase 7: auto-filled sender fields */
+.env-auto-tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--accent-foreground);background:var(--accent);border-radius:99px;padding:2px 8px;margin-left:6px}

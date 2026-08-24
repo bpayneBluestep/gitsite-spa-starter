@@ -518,8 +518,12 @@ function envSendOpen(cid: string, entryId: string): void {
         <input id="env-opt-rem" type="number" min="0" value="${env.remindEveryDays == null ? 3 : Number(env.remindEveryDays)}"></div>
       ${envSenderTabs(env).length ? `<div class="env-sender-fields">
         <div class="agr-roles-h">Your fields (stamped onto the documents)</div>
-        ${envSenderTabs(env).map(t => `<div class="field"><label>${esc(t.label || 'Sender field')}${t.required !== false ? ' *' : ''}</label>
-          <input id="env-sv-${esc(t.id)}" value="${esc(((env.senderValues || {}) as any)[t.id] || '')}"></div>`).join('')}
+        ${envSenderTabs(env).map(t => {
+          const saved = ((env.senderValues || {}) as any)[t.id];
+          const auto = !saved && t.source ? envPrefillValue(cid, t.source) : '';
+          return `<div class="field"><label>${esc(t.label || 'Sender field')}${t.required !== false ? ' *' : ''}${auto ? ' <span class="env-auto-tag">auto-filled</span>' : ''}</label>
+          <input id="env-sv-${esc(t.id)}" value="${esc(saved || auto || '')}"></div>`;
+        }).join('')}
       </div>` : ''}
     </div>
     <div class="modal-foot"><span class="modal-status"></span>
@@ -553,6 +557,36 @@ function envSendConfirm(cid: string, entryId: string): void {
 
 function envSenderTabs(env: Envelope): any[] {
   return (env.tabs || []).filter((t: any) => t.recipientId === '__sender__');
+}
+
+/* ---- auto-filled sender fields (phase 7) ----
+   A sender tab may carry a `source` — a client-record binding resolved when the
+   send dialog opens. The value lands in the input PREFILLED but editable; on send
+   it freezes into env.senderValues like any other sender field, so stamping,
+   validation, and the signing views need nothing new. */
+const ENV_PREFILL_SOURCES: { key: string; label: string }[] = [
+  { key: 'clientName', label: 'Client full name' },
+  { key: 'clientFirstName', label: 'Client first name' },
+  { key: 'clientDob', label: 'Client date of birth' },
+  { key: 'clientEmail', label: 'Client email' },
+  { key: 'clientPhone', label: 'Client cell phone' },
+  { key: 'clientLocation', label: 'Client city, state' },
+  { key: 'consultantName', label: 'Consultant name' },
+  { key: 'today', label: "Today's date" },
+];
+function envPrefillValue(cid: string, key: string): string {
+  const c = typeof findClient === 'function' ? findClient(cid) : undefined;
+  switch (key) {
+    case 'clientName': return c ? (c.first + ' ' + c.last).trim() : '';
+    case 'clientFirstName': return c ? c.first : '';
+    case 'clientDob': return c && c.dob ? (fmtDate(c.dob) || c.dob) : '';
+    case 'clientEmail': return (c && c.email) || '';
+    case 'clientPhone': return (c && c.cell) || '';
+    case 'clientLocation': return c ? [c.demo && c.demo.city, c.demo && c.demo.state].filter(Boolean).join(', ') : '';
+    case 'consultantName': return typeof ME !== 'undefined' && ME ? (ME.first + ' ' + ME.last).trim() : '';
+    case 'today': return fmtDate(new Date().toISOString().slice(0, 10)) || '';
+    default: return '';
+  }
 }
 
 /* One recipient's read-only row: status-aware pill + the phase-4 actions. */

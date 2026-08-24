@@ -197,10 +197,18 @@ function dsgPropsHtml(): string {
       <p class="meta">${esc(lockedOwner ? lockedOwner.name : 'This recipient')} has already signed — this field can't be changed by a correction.</p>`;
   }
   const owner = d.owners.filter(o => !d.locked[o.id]).map(o => `<option value="${esc(o.id)}"${t.recipientId === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+  // Sender fields can bind to a client-record source — resolved when the send
+  // dialog opens, editable there, frozen into senderValues at send (phase 7).
+  const prefill = t.recipientId === '__sender__' && t.type === 'text' ? `
+    <div class="field"><label>Auto-fill from</label><select onchange="dsgPrefillSource(this.value)">
+      <option value="">(typed by the sender)</option>
+      ${ENV_PREFILL_SOURCES.map(sc => `<option value="${sc.key}"${(t as any).source === sc.key ? ' selected' : ''}>${esc(sc.label)}</option>`).join('')}
+    </select></div>` : '';
   const needsOpts = t.type === 'radioGroup' || t.type === 'dropdown';
   const auto = t.type === 'dateSigned' || t.type === 'name';
   return `<div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
     <div class="field"><label>Assigned to</label><select onchange="dsgProp('recipientId',this.value)">${owner}</select></div>
+    ${prefill}
     ${auto ? `<p class="meta">Filled automatically when they sign.</p>` : `
       <div class="field"><label>Label</label><input value="${esc(t.label)}" oninput="dsgProp('label',this.value)"></div>
       ${needsOpts ? `<div class="field"><label>Options (one per line)</label>
@@ -502,6 +510,18 @@ function dsgProp(key: string, val: any): void {
     const o = d.owners.find(x => x.id === val);
     if (el && o) el.style.setProperty('--oc', o.color);
   }
+}
+
+function dsgPrefillSource(key: string): void {
+  const d = DSG!;
+  const t = d.tabs.find(x => x.id === d.selected);
+  if (!t) return;
+  (t as any).source = key || undefined;
+  // Give an unlabeled tab the source's friendly name — it's what the send dialog shows.
+  const src = ENV_PREFILL_SOURCES.find(sc => sc.key === key);
+  if (src && !t.label) { t.label = src.label; }
+  dsgTouched();
+  dsgRepaintAll();
 }
 
 function dsgPropOptions(text: string): void {
