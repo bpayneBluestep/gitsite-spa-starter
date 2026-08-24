@@ -116,8 +116,7 @@ function renderEnvelopeSign(d: any): void {
     + '</div>'
     + '<div id="sv-host"></div>'
     + (readOnly ? ''
-      : '<label class="sg-consent"><input type="checkbox" id="sg-consent" onchange="svUpdateProgress()"> I agree to sign these documents electronically, and that my electronic signature is legally binding.</label>'
-        + '<p class="sg-declinerow"><button type="button" class="sg-declineline" id="sg-envdecline">Decline to sign</button>'
+      : '<p class="sg-declinerow"><button type="button" class="sg-declineline" id="sg-envdecline">Decline to sign</button>'
         + ' · <button type="button" class="sg-declineline" id="sg-envwithdraw">Withdraw consent to sign electronically</button></p>')
     + '</div>');
   var pdfBtn = document.getElementById('sg-envpdf');
@@ -153,9 +152,8 @@ function renderEnvelopeSign(d: any): void {
         return j.data || j;
       });
     },
+    consentLabel: readOnly ? undefined : 'I agree to sign these documents electronically, and that my electronic signature is legally binding.',
     submit: function (p) {
-      var consent = document.getElementById('sg-consent');
-      if (!consent || !(consent as HTMLInputElement).checked) { return Promise.reject(new Error('Please check the consent box to sign.')); }
       return fetch(INGESTER, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

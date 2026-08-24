@@ -1167,50 +1167,80 @@ function envHandBegin(cid: string, entryId: string, recipientId: string): void {
   envSignNow(cid, entryId, recipientId);
 }
 
-/* Full-screen in-app signing on the SAME shared signview the parent page uses. */
+/* Full-PAGE in-app signing (route #/envsign/<cid>/<entryId>/<rid>) on the SAME
+   shared signview the parent page uses. Replaces the old cramped modal — both
+   "Sign now" and the in-person hand-off land here. */
+let ENV_SIGN: { cid: string; entryId: string; rid: string; env: Envelope | null; loading: boolean; error: string } | null = null;
+
 function envSignNow(cid: string, entryId: string, recipientId?: string): void {
   const env = ENV_OPEN;
-  if (!env) return;
   const me = recipientId
-    ? (env.recipients || []).find(r => r.id === recipientId)
-    : (env.recipients || []).find(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending');
+    ? (env && (env.recipients || []).find(r => r.id === recipientId))
+    : (env && (env.recipients || []).find(r => (r.kind === 'consultant' || r.kind === 'inperson') && r.status === 'pending'));
   if (!me || me.status !== 'pending') { toast('Nothing to sign.'); return; }
-  const host = document.createElement('div');
-  host.className = 'modal-overlay';
-  host.id = '__envSign';
-  host.innerHTML = `<div class="modal-card env-sign-card" role="dialog" aria-modal="true">
-    <div class="modal-head"><div><b>${esc(env.title)}</b><p>Complete your fields, then Finish.</p></div>
-      <button class="ico-x" onclick="envSignClose()">${ic('x', 18)}</button></div>
-    <div class="modal-body"><div id="sv-host"></div>
-      ${env.disclosure && env.disclosure.text ? `<details class="env-disc"><summary>Electronic records &amp; signatures disclosure (version ${esc(env.disclosure.version)})</summary>
-        <pre class="env-disc-text">${esc(env.disclosure.text)}</pre></details>` : ''}
-      <label class="sg-consent"><input type="checkbox" id="env-consent" onchange="svUpdateProgress()">
-        I have read the disclosure above, adopt this signature, and agree it is legally binding.</label></div>
-  </div>`;
-  document.body.appendChild(host);
-  svMount({
-    container: document.getElementById('sv-host')!,
-    env: env,
-    meId: me.id,
-    progress: (me as any).progress || null,
-    saveProgress: (p: any) => apiSaveEnvelopeProgress(cid, entryId, me.id, p.tabValues, p.typedName, p.hasAdopted),
-    submit: (p) => {
-      const consent = document.getElementById('env-consent') as HTMLInputElement | null;
-      if (!consent || !consent.checked) return Promise.reject(new Error('Please check the consent box.'));
-      return apiSignEnvelope(cid, entryId, me.id, p.signatureData, p.typedName, p.tabValues, p.initialsData);
-    },
-    onDone: async (res) => {
-      envSignClose();
-      ENV_OPEN = res && res.entryId ? res : null;
-      await loadEnvelopes(cid, true);
-      toast(res && res.completed ? 'Signed — envelope complete. The signed PDF is on file.' : 'Signed.');
-      render();
-    },
-  });
+  ENV_SIGN = null; // force a fresh load on the page
+  location.hash = `#/envsign/${encodeURIComponent(cid)}/${encodeURIComponent(entryId)}/${encodeURIComponent(me.id)}`;
 }
 
-function envSignClose(): void {
-  sigCloseModal(); sigOnChange(null); sigResetAdopted();
-  const m = document.getElementById('__envSign');
-  if (m) m.remove();
+function viewEnvSign(parts: string[]): string {
+  const cid = decodeURIComponent(parts[1] || '');
+  const entryId = decodeURIComponent(parts[2] || '');
+  const rid = decodeURIComponent(parts[3] || '');
+  if (!ENV_SIGN || ENV_SIGN.entryId !== entryId || ENV_SIGN.rid !== rid) {
+    ENV_SIGN = { cid: cid, entryId: entryId, rid: rid, env: null, loading: true, error: '' };
+    apiGetEnvelope(cid, entryId)
+      .then(env => { if (ENV_SIGN && ENV_SIGN.entryId === entryId) { ENV_SIGN.env = env; ENV_SIGN.loading = false; render(); } })
+      .catch((e: any) => { if (ENV_SIGN && ENV_SIGN.entryId === entryId) { ENV_SIGN.error = e && e.message ? e.message : String(e); ENV_SIGN.loading = false; render(); } });
+  }
+  const st = ENV_SIGN;
+  if (st.loading) return `<div class="env-signpage"><div class="empty">Loading…</div></div>`;
+  const env = st.env;
+  const me = env ? (env.recipients || []).find(r => r.id === st.rid) : null;
+  if (st.error || !env || !me) {
+    return `<div class="env-signpage"><div class="empty">Could not load this signing session${st.error ? ': ' + esc(st.error) : ''}.</div>
+      <p><button class="btn outline" onclick="envSignBack()">Back</button></p></div>`;
+  }
+  if (me.status !== 'pending' || !(env.status === 'Sent' || env.status === 'Partially Signed')) {
+    return `<div class="env-signpage"><div class="empty">Nothing to sign — ${me.status === 'signed' ? esc(me.name) + ' has already signed' : 'this envelope is ' + esc(env.status)}.</div>
+      <p><button class="btn outline" onclick="envSignBack()">Back to envelope</button></p></div>`;
+  }
+  setTimeout(envSignMount, 0);
+  return `<div class="env-signpage">
+    <div class="env-signpage-head">
+      <button class="btn ghost sm" onclick="envSignBack()">${ic('chevL', 14)} Back</button>
+      <div class="env-signpage-title"><b>${esc(env.title)}</b><span class="meta">Signing as ${esc(me.name)}${me.role ? ' — ' + esc(me.role) : ''}</span></div>
+    </div>
+    ${env.disclosure && env.disclosure.text ? `<details class="env-disc"><summary>Electronic records &amp; signatures disclosure (version ${esc(env.disclosure.version)})</summary>
+      <pre class="env-disc-text">${esc(env.disclosure.text)}</pre></details>` : ''}
+    <div id="sv-host"></div>
+  </div>`;
+}
+
+function envSignBack(): void {
+  const st = ENV_SIGN;
+  location.hash = st ? `#/clients/${st.cid}/agreements` : '#/clients';
+}
+
+function envSignMount(): void {
+  const st = ENV_SIGN;
+  const c = document.getElementById('sv-host');
+  if (!st || !st.env || !c || c.childNodes.length) return;
+  const env = st.env;
+  const me = (env.recipients || []).find(r => r.id === st.rid)!;
+  svMount({
+    container: c as HTMLElement,
+    env: env,
+    meId: me.id,
+    consentLabel: 'I have read the disclosure, adopt this signature, and agree it is legally binding.',
+    progress: (me as any).progress || null,
+    saveProgress: (p: any) => apiSaveEnvelopeProgress(st.cid, st.entryId, me.id, p.tabValues, p.typedName, p.hasAdopted),
+    submit: (p) => apiSignEnvelope(st.cid, st.entryId, me.id, p.signatureData, p.typedName, p.tabValues, p.initialsData),
+    onDone: async (res) => {
+      ENV_OPEN = res && res.entryId ? res : null; ENV_OPEN_CID = st.cid;
+      try { await loadEnvelopes(st.cid, true); } catch (_e) { /* list refresh only */ }
+      toast(res && res.completed ? 'Signed — envelope complete. Signed PDFs are on file.' : 'Signed.');
+      ENV_SIGN = null;
+      location.hash = `#/clients/${st.cid}/agreements`;
+    },
+  });
 }

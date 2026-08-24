@@ -55,6 +55,7 @@ function render(): void {
   else if (parts[0] === 'dashboard') html = viewDashboard();
   else if (parts[0] === 'agreementbuilder') html = viewAgreementBuilder();
   else if (parts[0] === 'designer') html = viewDesigner(parts);
+  else if (parts[0] === 'envsign') html = viewEnvSign(parts);
   else html = viewClients();
   const app = document.getElementById('app');
   if (app) app.innerHTML = html;

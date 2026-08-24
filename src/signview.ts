@@ -28,6 +28,9 @@ interface SvHost {
   /* lazy documents (P5): fetch one document's base64 on demand (anonymous page
      rides the token-gated docBytes action; in-app uses sourceUrl instead). */
   fetchDoc?: (docId: string) => Promise<string>;
+  /* Consent line docked in the sticky action bar. When set, Finish stays
+     disabled until the box is checked — hosts no longer render their own. */
+  consentLabel?: string;
 }
 
 let SV: SvHost | null = null;
@@ -78,7 +81,17 @@ function svMount(host: SvHost): void {
     }
   }
   sigOnChange(svRepaintMine);
-  const docs = (host.env.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+  let docs = (host.env.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
+  // Document visibility: an active signer sees ONLY the documents they have
+  // fields on, not the rest of the packet. (The public endpoint enforces the
+  // same server-side; this also covers the in-app surface.) Read-only views
+  // (meId '') and completed envelopes keep the full list.
+  if (host.meId) {
+    const mineDocs: { [id: string]: boolean } = {};
+    for (const t of (host.env.tabs || [])) { if (t.recipientId === host.meId) mineDocs[t.docId] = true; }
+    const filtered = docs.filter((d: any) => mineDocs[d.id]);
+    if (filtered.length) docs = filtered;
+  }
   let html = '<div class="sv-doc-list">';
   for (const doc of docs) {
     const n = Math.max(1, doc.pages || 1);
@@ -95,6 +108,7 @@ function svMount(host: SvHost): void {
       : '')
     + html
     + `<div class="sv-bar">
+        ${host.consentLabel && host.meId ? `<label class="sv-consent"><input type="checkbox" id="sv-consent" onchange="svUpdateProgress()"> ${sigEsc(host.consentLabel)}</label>` : ''}
         <div class="sv-progress" id="sv-progress"></div>
         <span class="sv-savenote" id="sv-savenote"></span>
         ${host.saveProgress && host.meId ? '<button type="button" class="sg-btn ghost" id="sv-later" onclick="svSaveLater()">Finish later</button>' : ''}
@@ -306,8 +320,10 @@ function svUpdateProgress(): void {
   const mine = (host.env.tabs || []).filter((t: any) => t.recipientId === host.meId && t.required !== false).length;
   const p = document.getElementById('sv-progress');
   if (p) p.textContent = mine ? (mine - missing.length) + ' of ' + mine + ' required fields complete' : '';
+  const consentEl = document.getElementById('sv-consent') as HTMLInputElement | null;
+  const consentOk = !host.consentLabel || (consentEl ? consentEl.checked : false);
   const f = document.getElementById('sv-finish') as HTMLButtonElement | null;
-  if (f) f.disabled = missing.length > 0;
+  if (f) { f.disabled = missing.length > 0 || !consentOk; f.title = !consentOk && !missing.length ? 'Check the consent box to finish' : ''; }
   const n = document.getElementById('sv-next') as HTMLButtonElement | null;
   if (n) n.style.display = missing.length ? '' : 'none';
   svScheduleSave();
@@ -365,6 +381,10 @@ async function svFinish(): Promise<void> {
   const host = SV; if (!host) return;
   const missing = svMissing();
   if (missing.length) { svNext(); return; }
+  if (host.consentLabel) {
+    const c = document.getElementById('sv-consent') as HTMLInputElement | null;
+    if (!c || !c.checked) { if (c) c.focus(); alert('Please check the consent box to sign.'); return; }
+  }
   const a = sigAdopted();
   const btn = document.getElementById('sv-finish') as HTMLButtonElement | null;
   if (btn) { btn.disabled = true; btn.textContent = 'Signing…'; }
