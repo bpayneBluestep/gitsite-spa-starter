@@ -562,7 +562,7 @@ function envRecRoRow(cid: string, env: Envelope, r: EnvRecipient): string {
   const kindLabel = (ENV_KINDS.find(k => k.v === r.kind) || { label: r.kind }).label;
   let pill: string;
   if (r.kind === 'cc') pill = `<span class="pill muted">CC</span>`;
-  else if (r.status === 'signed') pill = `<span class="pill ok">Signed${r.signedAt ? ' · ' + esc(fmtDate(r.signedAt) || '') : ''}</span>`;
+  else if (r.status === 'signed') pill = `<span class="pill ok">Signed${r.signedAt ? ' · ' + esc(fmtDate(String(r.signedAt).slice(0, 10)) || '') : ''}</span>`;
   else if (r.status === 'declined') pill = `<span class="pill warn">Declined</span>`;
   else if (inflight && !turn) pill = `<span class="pill muted" title="Earlier signers haven't finished yet">Waiting · order ${r.routingOrder}</span>`;
   else if (inflight) pill = `<span class="pill info">${r.notifiedAt ? 'Emailed' : 'Their turn'}</span>`;
