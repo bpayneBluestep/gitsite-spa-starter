@@ -148,6 +148,20 @@ async function envNew(cid: string): Promise<void> {
    auto-merged (guessing wrong silently is worse than asking). */
 let ENV_PACK: { tpls: any[]; roles: { key: string; label: string; optional: boolean; from: string[] }[] } | null = null;
 
+/* Slots of one template + consolidation keys. Two DISTINCT roles sharing a name
+   inside one template (the dual-sponsor pattern: "Parent / Guardian" twice) are
+   different people, so duplicate labels are occurrence-numbered: the 2nd
+   "Parent / Guardian" keys as "parent / guardian#2" and displays "(2)". Across
+   templates, occurrence N of a name merges with occurrence N of the same name. */
+function envPackKeys(body: any): { slot: { id: string; label: string; optional: boolean }; key: string; label: string }[] {
+  const seen: { [k: string]: number } = {};
+  return envTplSlots(body).map(sl => {
+    const base = sl.label.trim().toLowerCase();
+    const n = (seen[base] = (seen[base] || 0) + 1);
+    return { slot: sl, key: n === 1 ? base : base + '#' + n, label: n === 1 ? sl.label : sl.label + ' (' + n + ')' };
+  });
+}
+
 function envPackSel(): any[] {
   return ENV_TPLS.filter((_t: any, i: number) => {
     const cb = document.getElementById('env-pack-t-' + i) as HTMLInputElement | null;
@@ -183,11 +197,10 @@ async function envPackRoles(cid: string, sel: any[]): Promise<void> {
   const roles: { key: string; label: string; optional: boolean; from: string[] }[] = [];
   const byKey: { [k: string]: { key: string; label: string; optional: boolean; from: string[] } } = {};
   for (const t of sel) {
-    for (const sl of envTplSlots(t.bodyJson)) {
-      const key = sl.label.trim().toLowerCase();
-      let r = byKey[key];
-      if (!r) { r = { key: key, label: sl.label, optional: sl.optional, from: [] }; byKey[key] = r; roles.push(r); }
-      if (!sl.optional) r.optional = false;
+    for (const k of envPackKeys(t.bodyJson)) {
+      let r = byKey[k.key];
+      if (!r) { r = { key: k.key, label: k.label, optional: k.slot.optional, from: [] }; byKey[k.key] = r; roles.push(r); }
+      if (!k.slot.optional) r.optional = false;
       if (r.from.indexOf(t.name) < 0) r.from.push(t.name);
     }
   }
@@ -266,7 +279,7 @@ async function envPackCreate(cid: string): Promise<void> {
       const body = t.bodyJson;
       // THIS template's slot id → consolidated role key → recipient id
       const slotKey: { [sid: string]: string } = {};
-      for (const sl of envTplSlots(body)) slotKey[sl.id] = sl.label.trim().toLowerCase();
+      for (const k of envPackKeys(body)) slotKey[k.slot.id] = k.key;
       const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (keyToRid[slotKey[slot] || ''] || null);
       const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
       for (const doc of docs) {
