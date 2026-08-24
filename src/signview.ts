@@ -93,9 +93,17 @@ function svMount(host: SvHost): void {
     if (filtered.length) docs = filtered;
   }
   let html = '<div class="sv-doc-list">';
+  let di = 0;
   for (const doc of docs) {
+    di++;
     const n = Math.max(1, doc.pages || 1);
-    html += `<div class="sv-docname">${sigEsc(doc.name)}</div>`;
+    // A packet is N separate agreements — make each boundary unmistakable:
+    // numbered badge, large title, page count, heavy divider above.
+    html += `<div class="sv-dochead${di === 1 ? ' first' : ''}">
+      <span class="sv-docnum">Document ${di} of ${docs.length}</span>
+      <span class="sv-doctitle">${sigEsc(doc.name)}</span>
+      <span class="sv-docpages">${n} page${n === 1 ? '' : 's'}</span>
+    </div>`;
     for (let p = 1; p <= n; p++) {
       html += `<div class="sv-page" data-doc="${sigEsc(doc.id)}" data-page="${p}" data-url="${sigEsc(doc.sourceUrl)}">
         <canvas></canvas><div class="sv-overlay"></div></div>`;
