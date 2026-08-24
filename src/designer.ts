@@ -52,8 +52,7 @@ interface DsgState {
   clipboard: DsgTab | null;
   correcting: boolean;              // env is Sent/Partially Signed (phase-4 correction)
   locked: { [rid: string]: boolean }; // recipients who already signed — their tabs are immutable
-  roles: any[];                     // tpl mode: raw roles (id, name, holders) — owners are DERIVED slots
-  anchors: any[];                   // tpl mode: auto-place rules (phase 5)
+  roles: any[];                     // tpl mode: raw roles (id, name, optional)
 }
 
 let DSG: DsgState | null = null;
@@ -71,7 +70,7 @@ function viewDesigner(parts: string[]): string {
       mode: mode, cid: cid, entryId: entryId, title: '', docs: [], tabs: [], owners: [],
       activeOwner: '', armedType: '', selected: '', zoom: 0, // 0 = fit-to-width, computed on first mount
       loading: true, error: '', dirty: false, saving: false, pages: [], clipboard: null,
-      correcting: false, locked: {}, roles: [], anchors: [],
+      correcting: false, locked: {}, roles: [],
     };
     dsgLoad();
   }
@@ -107,7 +106,6 @@ async function dsgLoad(): Promise<void> {
       const roles = (t.bodyJson.roles || []) as any[];
       if (!roles.length) roles.push({ id: 'role1_' + Math.random().toString(36).slice(2, 6), name: 'Signer 1' });
       d.roles = roles;
-      d.anchors = (t.bodyJson.anchors || []) as any[];
       d.owners = dsgOwnersFromRoles(roles);
     }
     // Both modes get the sender pseudo-owner: fields the SENDER fills in the send
@@ -174,7 +172,6 @@ function dsgView(): string {
               <input type="checkbox" ${r.optional ? 'checked' : ''} onchange="dsgToggleOptional('${esc(r.id)}')"> ${esc(r.name)} is optional</label>
             <button class="ico-mini" title="Rename ${esc(r.name)}" onclick="dsgRenameRole('${esc(r.id)}')">${ic('edit', 12)}</button></div>`).join('')}</div>` : ''}
         </div>
-        ${d.mode === 'tpl' ? dsgAnchorsCard() : ''}
         <div class="card card-pad">
           <div class="agb-side-h">Fields</div>
           <div class="dsg-palette">${palette}</div>
@@ -618,59 +615,6 @@ function dsgToggleOptional(roleId: string): void {
   render();
 }
 
-/* ---- auto-place rules (anchor tagging, phase 5) ---- */
-function dsgAnchorsCard(): string {
-  const d = DSG!;
-  const slotName = (id: string) => (d.owners.find(o => o.id === id) || { name: id }).name;
-  const rows = d.anchors.map((a: any, i: number) => `
-    <div class="dsg-anchor"><div class="dsg-anchor-main"><b>“${esc(a.matchText)}”</b>
-      <span class="meta">${esc(GEO_TAB_LABELS[a.tabType] || a.tabType)} → ${esc(slotName(a.roleSlot))} · dx ${a.dx || 0}, dy ${a.dy || 0}</span></div>
-      <button class="ico-mini danger" title="Delete rule" onclick="dsgAnchorDel(${i})">${ic('trash', 13)}</button></div>`).join('');
-  const types = ['initials', 'signature', 'text', 'dateSigned', 'checkbox'];
-  return `<div class="card card-pad">
-    <div class="agb-side-h">Auto-place rules</div>
-    <p class="meta">On apply, each rule drops a field beside <b>every</b> occurrence of its text.</p>
-    ${rows || '<p class="meta">No rules yet.</p>'}
-    <div class="dsg-anchor-form">
-      <input id="dsg-an-text" placeholder="Match text (exact, case-sensitive)">
-      <div class="dsg-anchor-row">
-        <select id="dsg-an-type">${types.map(t => `<option value="${t}">${esc(GEO_TAB_LABELS[t] || t)}</option>`).join('')}</select>
-        <select id="dsg-an-slot">${d.owners.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>
-      </div>
-      <div class="dsg-anchor-row">
-        <input id="dsg-an-dx" type="number" value="100" title="dx (pt right of the text)"> <span class="meta">dx</span>
-        <input id="dsg-an-dy" type="number" value="0" title="dy (pt down)"> <span class="meta">dy</span>
-        <input id="dsg-an-occ" type="number" min="0" value="0" title="Only the Nth occurrence (0 = every occurrence)"> <span class="meta">occ</span>
-      </div>
-      <button class="btn outline sm" onclick="dsgAnchorAdd()">${ic('plus', 13)} Add rule</button>
-    </div>
-  </div>`;
-}
-function dsgAnchorAdd(): void {
-  const d = DSG!;
-  const g = (id: string) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
-  const text = g('dsg-an-text') ? (g('dsg-an-text') as HTMLInputElement).value.trim() : '';
-  if (!text) { toast('Enter the text to match.'); return; }
-  d.anchors.push({
-    id: 'an_' + Math.random().toString(36).slice(2, 8),
-    matchText: text,
-    tabType: g('dsg-an-type') ? g('dsg-an-type')!.value : 'initials',
-    roleSlot: g('dsg-an-slot') ? g('dsg-an-slot')!.value : '',
-    dx: Number(g('dsg-an-dx') ? g('dsg-an-dx')!.value : 0) || 0,
-    dy: Number(g('dsg-an-dy') ? g('dsg-an-dy')!.value : 0) || 0,
-    occurrence: Number(g('dsg-an-occ') ? g('dsg-an-occ')!.value : 0) || 0,
-    required: true,
-  });
-  dsgTouched();
-  render();
-}
-function dsgAnchorDel(i: number): void {
-  const d = DSG!;
-  d.anchors.splice(i, 1);
-  dsgTouched();
-  render();
-}
-
 function dsgBack(): void {
   dsgFlushSave();
   if (DSG && DSG.mode === 'env') location.hash = '#/clients/' + DSG.cid + '/agreements';
@@ -732,7 +676,7 @@ async function dsgFlushSave(): Promise<void> {
   const st = document.querySelector('.dsg-savestate'); if (st) st.textContent = 'Saving…';
   try {
     if (d.mode === 'env') await apiSaveEnvelopeTabs(d.cid, d.entryId, d.tabs);
-    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.roles.map((r: any) => ({ id: r.id, name: r.name, optional: !!r.optional })), d.anchors);
+    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.roles.map((r: any) => ({ id: r.id, name: r.name, optional: !!r.optional })), []);
     d.dirty = false;
     if (st) st.textContent = 'Saved';
   } catch (e: any) {

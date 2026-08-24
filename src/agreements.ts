@@ -126,7 +126,7 @@ async function envNew(cid: string): Promise<void> {
       <div class="env-tpl-list">
         ${tpls.map((t: any) => `<button class="env-tpl-row" onclick="envTplPick('${esc(cid)}','${esc(t.entryId)}')">
           <b>${esc(t.name)}</b><span class="meta">${(t.bodyJson.documents || []).length} PDF${(t.bodyJson.documents || []).length === 1 ? '' : 's'}
-          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}${(t.bodyJson.anchors || []).length ? ' · ' + (t.bodyJson.anchors || []).length + ' auto-place rule' + ((t.bodyJson.anchors || []).length === 1 ? '' : 's') : ''}</span>
+          · ${(t.bodyJson.tabs || []).length} field${(t.bodyJson.tabs || []).length === 1 ? '' : 's'}</span>
         </button>`).join('')}
       </div>
     </div>
@@ -231,7 +231,6 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
     const slotToRid: { [slot: string]: string } = {};
     for (const r of env.recipients) if (r.role) slotToRid[r.role] = r.id;
     const mapSlot = (slot: string) => slot === '__sender__' ? '__sender__' : (slotToRid[slot] || null);
-    await loadPdfJs();
     const allTabs: any[] = [];
     const docs = (body.documents || []).slice().sort((a: any, b: any) => a.order - b.order);
     for (let di = 0; di < docs.length; di++) {
@@ -248,13 +247,6 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
         const rid = mapSlot(String(tb.recipientId));
         if (!rid) continue;
         allTabs.push({ ...tb, id: 't_' + Math.random().toString(36).slice(2, 10), docId: newDoc.id, recipientId: rid });
-      }
-      // anchor rules against the real text layer
-      if ((body.anchors || []).length) {
-        envTplStatus(`Auto-placing fields on "${doc.name}"…`);
-        const pdf = await pdfOpenData(b64);
-        const atabs = await geoAnchorTabs(pdf, newDoc.id, body.anchors || [], mapSlot);
-        allTabs.push(...atabs);
       }
     }
     envTplStatus('Saving ' + allTabs.length + ' fields…');
