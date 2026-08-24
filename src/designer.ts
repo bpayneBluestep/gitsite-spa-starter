@@ -156,7 +156,7 @@ function dsgView(): string {
   return `${crumb([{ t: 'Agreements' }, { t: d.title }, { t: 'Place fields' }])}
     ${d.correcting ? `<div class="env-correct-note">${ic('edit', 14)} Correcting a sent envelope — fields of recipients who already signed are locked.</div>` : ''}
     <div class="page-head"><div><h1>Place fields</h1>
-      <p>${d.armedType ? `Click the page to place a <b>${esc(GEO_TAB_LABELS[d.armedType])}</b> for <b>${esc((d.owners.find(o => o.id === d.activeOwner) || { name: '?' }).name)}</b> — Esc to cancel.` : 'Pick a field type, then click the page. Drag to move, edges to resize, arrows to nudge.'}</p></div>
+      <p>${d.armedType ? `Click the page to place a <b>${esc(GEO_TAB_LABELS[d.armedType])}</b> for <b>${esc((d.owners.find(o => o.id === d.activeOwner) || { name: '?' }).name)}</b> — Esc to cancel.` : 'Pick a field type, then click the page. Drag to move, edges to resize, arrows to nudge. Ctrl+C copies the selected field, Ctrl+V pastes it at your cursor.'}</p></div>
       <div>
         <span class="dsg-savestate">${d.saving ? 'Saving…' : d.dirty ? 'Unsaved' : 'Saved'}</span>
         <button class="btn ghost" onclick="dsgBack()">${ic('chevL', 14)} Done</button>
@@ -515,6 +515,22 @@ function dsgPropsPosition(): void {
   panel.style.top = top + 'px';
   panel.style.right = 'auto';
 }
+/* Track the cursor so Ctrl+V can paste WHERE THE MOUSE IS — copy a field once,
+   point at the next blank, paste. Cross-page paste works: the copy adopts
+   whichever page the cursor is over. */
+let DSG_MOUSE = { x: 0, y: 0 };
+document.addEventListener('mousemove', function (e: MouseEvent) { DSG_MOUSE.x = e.clientX; DSG_MOUSE.y = e.clientY; });
+function dsgMouseSpot(): { docId: string; page: number; x: number; y: number } | null {
+  const hit = document.elementFromPoint(DSG_MOUSE.x, DSG_MOUSE.y) as HTMLElement | null;
+  const pg = hit && hit.closest ? hit.closest('.dsg-page') as HTMLElement | null : null;
+  if (!pg) return null;
+  const docId = pg.getAttribute('data-doc') || '';
+  const page = Number(pg.getAttribute('data-page')) || 1;
+  const r = pg.getBoundingClientRect();
+  const scale = dsgScaleFor(docId, page);
+  return { docId: docId, page: page, x: geoPxToPt(DSG_MOUSE.x - r.left, scale), y: geoPxToPt(DSG_MOUSE.y - r.top, scale) };
+}
+
 // Keep the popover glued to its field while the page scrolls or the window resizes.
 document.addEventListener('scroll', function () { if (location.hash.indexOf('/designer/') >= 0) dsgPropsPosition(); }, true);
 window.addEventListener('resize', function () { if (location.hash.indexOf('/designer/') >= 0) dsgPropsPosition(); });
@@ -680,9 +696,19 @@ document.addEventListener('keydown', function (ev: KeyboardEvent) {
     if (d.locked[d.clipboard.recipientId]) return;
     const copy: DsgTab = JSON.parse(JSON.stringify(d.clipboard));
     copy.id = 't_' + Math.random().toString(36).slice(2, 10);
-    copy.x += 12; copy.y += 12;
+    const m = dsgMouseSpot();
+    if (m) {
+      // paste CENTERED under the cursor, on whichever page it's over
+      copy.docId = m.docId; copy.page = m.page;
+      copy.x = m.x - copy.w / 2; copy.y = m.y - copy.h / 2;
+    } else {
+      copy.x += 12; copy.y += 12; // cursor not over a page — offset beside the original
+    }
+    const infoP = dsgPageInfo(copy.docId, copy.page);
+    if (infoP) geoClampTab(copy, infoP.wPt, infoP.hPt);
     d.tabs.push(copy); d.selected = copy.id; dsgTouched(); dsgRepaintAll(); return;
   }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') { ev.preventDefault(); dsgDuplicate(); return; }
   if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); dsgDelete(); return; }
   const step = ev.shiftKey ? 10 : 1;
   let moved = true;
