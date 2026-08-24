@@ -570,12 +570,14 @@ function envBuildPickOpts(cid: string): void {
   ENV_PICK = [];
   const st = contactsState(cid);
   if (st.list === null && !st.loading) loadContacts(cid); // render() re-runs on arrival
-  const sorted = (st.list || []).slice().sort((a: Contact, b: Contact) => Number(!!b.signer) - Number(!!a.signer));
-  for (const ct of sorted) {
-    const nm = ((ct.first || '') + ' ' + (ct.last || '')).trim();
+  // Live contacts are LiveContact (firstName/relationship); primaries first.
+  const sorted = (st.list || []).slice().sort((a: any, b: any) => Number(!!b.primary) - Number(!!a.primary));
+  for (const ct of sorted as any[]) {
+    const nm = ((ct.firstName || ct.first || '') + ' ' + (ct.lastName || ct.last || '')).trim();
     if (!nm) continue;
+    const rel = ct.relationship || ct.rel || '';
     ENV_PICK.push({
-      label: nm + (ct.rel ? ' — ' + ct.rel : '') + (ct.email ? '' : ' (no email on file)'),
+      label: nm + (rel ? ' — ' + rel : '') + (ct.email ? '' : ' (no email on file)'),
       name: nm, email: ct.email || '', kind: 'external',
     });
   }
