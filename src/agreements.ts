@@ -10,7 +10,6 @@
    are phase 3 — the Send button exists but is disabled with an honest tooltip.
 
    Legacy authored agreements remain readable forever: listEnvelopes returns them
-   tagged legacy:true, completed ones open their signed PDF, unfinished ones can
    only be voided. Their creation/signing UI is gone.
 
    Backend: apiListEnvelopes/apiGetEnvelope/apiCreateEnvelope/apiUploadEnvelopeDoc/
@@ -76,10 +75,10 @@ function agreementsSection(c: Client): string {
 }
 
 /* ---- list ---- */
-function envStatusPill(status: string, legacy: boolean): string {
+function envStatusPill(status: string, _legacy?: boolean): string {
   const cls = status === 'Completed' ? 'ok' : status === 'Voided' || status === 'Declined' ? 'muted'
     : status === 'Draft' ? 'draft' : 'info';
-  return `<span class="pill ${cls}">${esc(status)}</span>${legacy ? ' <span class="pill muted" title="Created by the retired rich-text builder — read-only">legacy</span>' : ''}`;
+  return `<span class="pill ${cls}">${esc(status)}</span>`;
 }
 
 function envList(c: Client, rows: any[]): string {
@@ -93,14 +92,12 @@ function envList(c: Client, rows: any[]): string {
   const body = rows.map(r => {
     const who = (r.recipients || []).map((x: any) =>
       `<span class="env-chip ${x.status === 'signed' ? 'done' : ''}" title="${esc(x.kind)} · ${esc(x.status)}">${esc(x.name || '?')}</span>`).join('');
-    const open = r.legacy
-      ? (r.signedPdf ? `<button class="btn outline sm" onclick="filesOpen('${esc(r.signedPdf)}')">${ic('download', 14)} Signed PDF</button>` : '')
-      : `<button class="btn outline sm" onclick="envOpen('${esc(c.id)}','${esc(r.entryId)}')">${ic('chevR', 14)} Open</button>`;
+    const open = `<button class="btn outline sm" onclick="envOpen('${esc(c.id)}','${esc(r.entryId)}')">${ic('chevR', 14)} Open</button>`;
     const voidBtn = (r.status !== 'Completed' && r.status !== 'Voided')
-      ? `<button class="btn ghost sm" onclick="envVoid('${esc(c.id)}','${esc(r.entryId)}',${r.legacy ? 'true' : 'false'})">${ic('trash', 14)} Void</button>` : '';
+      ? `<button class="btn ghost sm" onclick="envVoid('${esc(c.id)}','${esc(r.entryId)}')">${ic('trash', 14)} Void</button>` : '';
     return `<div class="card env-row">
       <div class="env-row-main">
-        <div class="env-row-title"><b>${esc(r.title)}</b> ${envStatusPill(r.status, !!r.legacy)}</div>
+        <div class="env-row-title"><b>${esc(r.title)}</b> ${envStatusPill(r.status)}</div>
         <div class="env-row-meta">${r.docCount} document${r.docCount === 1 ? '' : 's'} · ${esc(fmtDate(r.createdAt) || '')}${r.completedAt ? ' · completed ' + esc(fmtDate(r.completedAt) || '') : ''}</div>
         <div class="env-row-who">${who}</div>
       </div>
@@ -436,12 +433,11 @@ async function envOpen(cid: string, entryId: string): Promise<void> {
 
 function envClose(): void { ENV_OPEN = null; ENV_CORRECT = false; render(); }
 
-async function envVoid(cid: string, entryId: string, legacy: boolean): Promise<void> {
+async function envVoid(cid: string, entryId: string): Promise<void> {
   const reason = prompt('Void this envelope? Recipients will no longer be able to sign.\nReason (optional):', '');
   if (reason == null) return;
   try {
-    if (legacy) await apiVoidAgreement(cid, entryId, reason);
-    else await apiVoidEnvelope(cid, entryId, reason);
+    await apiVoidEnvelope(cid, entryId, reason);
     if (ENV_OPEN && ENV_OPEN.entryId === entryId) ENV_OPEN = null;
     await loadEnvelopes(cid, true);
     toast('Envelope voided.');
@@ -506,7 +502,7 @@ function envDetail(c: Client, env: Envelope): string {
         ${ENV_CORRECT ? `<button class="btn primary" onclick="envCorrectDone('${esc(c.id)}','${esc(env.entryId)}')">Done correcting</button>` : ''}
         ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
         ${env.status !== 'Draft' ? `<button class="btn ghost" onclick="envVerify('${esc(c.id)}','${esc(env.entryId)}')" title="Recompute the audit hash chain and completion hash">${ic('check', 14)} Verify</button>` : ''}
-        ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
+        ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}')">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
     ${ENV_CORRECT ? `<div class="env-correct-note">${ic('edit', 14)} Correcting a sent envelope — recipients who already signed are locked, and their placed fields can't move. Pending signers see the updated envelope on their existing link.</div>` : ''}
     ${envMetaLine(env)}

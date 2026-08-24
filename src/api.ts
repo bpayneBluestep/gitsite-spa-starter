@@ -306,37 +306,16 @@ function agrEntity(clientId: string): string {
   const c = typeof findClient === 'function' ? findClient(clientId) : undefined;
   return (c && c.entity) ? c.entity : 'client';
 }
-function apiListAgreements(clientId: string): Promise<any[]> {
-  return maestroPost('listAgreements', { id: clientId, entity: agrEntity(clientId) });
-}
-function apiGetAgreement(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('getAgreement', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
-}
-function apiCreateAgreement(clientId: string, templateRef: string, title: string, signers: any[]): Promise<any> {
-  return maestroPost('createAgreement', { id: clientId, templateRef: templateRef, title: title, signers: signers, entity: agrEntity(clientId) });
-}
-function apiSendAgreement(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('sendAgreement', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
-}
-function apiVoidAgreement(clientId: string, entryId: string, reason: string): Promise<any> {
-  return maestroPost('voidAgreement', { id: clientId, entryId: entryId, reason: reason, entity: agrEntity(clientId) });
-}
 // fieldValues carries whatever {{initials:…}} / {{text:…:Label}} tokens the template
 // addressed to the consultant's role; {} when it addressed none.
 // `typedName` is the name the signer typed when adopting their signature — what
 // {{name:role}} and the certificate print. Distinct from the name the consultant
 // entered on the invite, which is only ever a label for who was asked.
-function apiCountersignAgreement(clientId: string, entryId: string, signatureData: string, fieldValues?: Record<string, any>, typedName?: string): Promise<any> {
-  return maestroPost('countersignAgreement', { id: clientId, entryId: entryId, signatureData: signatureData, fieldValues: fieldValues || {}, typedName: typedName || '', entity: agrEntity(clientId) });
-}
 // Generate-or-serve the signed PDF on demand (PDF generation is off the signing
 // path — it lives here, retryable, so a momentary converter hang never blocks signing).
 // Idempotent: serves the cached Files copy when one exists, renders only when it
 // doesn't. Called as a fire-and-forget kick right after a countersign completes an
 // agreement, and again from the manual "PDF generating…" retry button.
-function apiGetSignedPdf(clientId: string, entryId: string): Promise<any> {
-  return maestroPost('getSignedPdf', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
-}
 
 /* ---- envelopes (schema v3, DocuSign model) ----
    Same MEF as legacy agreements; the maestro tells them apart by

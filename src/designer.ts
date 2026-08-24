@@ -167,10 +167,13 @@ function dsgView(): string {
           <div class="agb-side-h">${d.mode === 'env' ? 'Recipients' : 'Roles'}</div>
           <div class="dsg-owners">${ownerBtns}</div>
           ${d.mode === 'tpl' ? `<button class="btn ghost sm" onclick="dsgAddRole()">${ic('plus', 13)} Add role</button>
-          <div class="dsg-holders">${d.roles.map(r => `<div class="dsg-holders-row">
+          <div class="dsg-holders">${d.roles.map((r, ri) => `<div class="dsg-holders-row">
             <label title="An optional role may be left blank when this template is applied — that person and all their fields are omitted from the envelope.">
               <input type="checkbox" ${r.optional ? 'checked' : ''} onchange="dsgToggleOptional('${esc(r.id)}')"> ${esc(r.name)} is optional</label>
-            <button class="ico-mini" title="Rename ${esc(r.name)}" onclick="dsgRenameRole('${esc(r.id)}')">${ic('edit', 12)}</button></div>`).join('')}</div>` : ''}
+            <button class="ico-mini" title="Rename ${esc(r.name)}" onclick="dsgRenameRole('${esc(r.id)}')">${ic('edit', 12)}</button>
+            <button class="ico-mini" title="Move up" ${ri === 0 ? 'disabled' : ''} onclick="dsgMoveRole('${esc(r.id)}',-1)">${ic('chevU', 12)}</button>
+            <button class="ico-mini" title="Move down" ${ri === d.roles.length - 1 ? 'disabled' : ''} onclick="dsgMoveRole('${esc(r.id)}',1)">${ic('chevD', 12)}</button>
+            <button class="ico-mini danger" title="Delete ${esc(r.name)}" onclick="dsgDeleteRole('${esc(r.id)}')">${ic('trash', 12)}</button></div>`).join('')}</div>` : ''}
         </div>
         <div class="card card-pad">
           <div class="agb-side-h">Fields</div>
@@ -685,6 +688,37 @@ function dsgRenameRole(roleId: string): void {
   if (name == null || !name.trim()) return;
   r.name = name.trim();
   dsgRebuildOwners();
+  dsgTouched();
+  render();
+}
+
+/* Reorder roles — the order sets the apply wizard's slot order and the default
+   signing order suggestion, so admins can put "Parent 1" above "Witness". */
+function dsgMoveRole(roleId: string, dir: number): void {
+  const d = DSG!;
+  const i = d.roles.findIndex((x: any) => x.id === roleId);
+  const j = i + (dir < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= d.roles.length) return;
+  const t = d.roles[i]; d.roles[i] = d.roles[j]; d.roles[j] = t;
+  dsgRebuildOwners();
+  dsgTouched();
+  render();
+}
+
+/* Delete a role. Its placed fields go with it — confirmed first, because that
+   can be a lot of work to lose on a template with per-page initials. */
+function dsgDeleteRole(roleId: string): void {
+  const d = DSG!;
+  const r = d.roles.find((x: any) => x.id === roleId);
+  if (!r) return;
+  const owned = d.tabs.filter((t: any) => t.recipientId === roleId).length;
+  if (!confirm('Delete the role "' + (r.name || 'Role') + '"'
+    + (owned ? ' and its ' + owned + ' placed field' + (owned === 1 ? '' : 's') : '') + '?')) return;
+  d.roles = d.roles.filter((x: any) => x.id !== roleId);
+  d.tabs = d.tabs.filter((t: any) => t.recipientId !== roleId);
+  if (d.selected && !d.tabs.some((t: any) => t.id === d.selected)) d.selected = '';
+  dsgRebuildOwners();
+  if (!d.owners.some(o => o.id === d.activeOwner)) d.activeOwner = d.owners.length ? d.owners[0].id : '';
   dsgTouched();
   render();
 }
