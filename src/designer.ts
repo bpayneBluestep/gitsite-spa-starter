@@ -169,8 +169,10 @@ function dsgView(): string {
           <div class="agb-side-h">${d.mode === 'env' ? 'Recipients' : 'Roles'}</div>
           <div class="dsg-owners">${ownerBtns}</div>
           ${d.mode === 'tpl' ? `<button class="btn ghost sm" onclick="dsgAddRole()">${ic('plus', 13)} Add role</button>
-          <div class="dsg-holders">${d.roles.map(r => `<label class="dsg-holders-row" title="An optional role may be left blank when this template is applied — that person and all their fields are omitted from the envelope.">
-            <input type="checkbox" ${r.optional ? 'checked' : ''} onchange="dsgToggleOptional('${esc(r.id)}')"> ${esc(r.name)} is optional</label>`).join('')}</div>` : ''}
+          <div class="dsg-holders">${d.roles.map(r => `<div class="dsg-holders-row">
+            <label title="An optional role may be left blank when this template is applied — that person and all their fields are omitted from the envelope.">
+              <input type="checkbox" ${r.optional ? 'checked' : ''} onchange="dsgToggleOptional('${esc(r.id)}')"> ${esc(r.name)} is optional</label>
+            <button class="ico-mini" title="Rename ${esc(r.name)}" onclick="dsgRenameRole('${esc(r.id)}')">${ic('edit', 12)}</button></div>`).join('')}</div>` : ''}
         </div>
         ${d.mode === 'tpl' ? dsgAnchorsCard() : ''}
         <div class="card card-pad">
@@ -594,6 +596,18 @@ function dsgRebuildOwners(): void {
   d.owners = dsgOwnersFromRoles(d.roles);
   d.owners.push({ id: '__sender__', name: 'Sender (at send)', color: '#64748b' });
 }
+function dsgRenameRole(roleId: string): void {
+  const d = DSG!;
+  const r = d.roles.find((x: any) => x.id === roleId);
+  if (!r) return;
+  const name = prompt('Rename role:', r.name || '');
+  if (name == null || !name.trim()) return;
+  r.name = name.trim();
+  dsgRebuildOwners();
+  dsgTouched();
+  render();
+}
+
 function dsgToggleOptional(roleId: string): void {
   const d = DSG!;
   const r = d.roles.find((x: any) => x.id === roleId);

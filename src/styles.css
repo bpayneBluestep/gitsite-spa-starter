@@ -1275,7 +1275,8 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .env-tpl-slot-h{font:600 11px/1 inherit;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);margin-bottom:5px}
 .env-sender-fields{margin-top:14px;border-top:1px solid var(--border);padding-top:10px}
 .dsg-holders{margin-top:8px;display:flex;flex-direction:column;gap:4px}
-.dsg-holders-row{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--muted-foreground);cursor:pointer}
+.dsg-holders-row{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--muted-foreground)}
+.dsg-holders-row label{display:flex;gap:7px;align-items:center;cursor:pointer;flex:1;min-width:0}
 .dsg-anchor{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--border)}
 .dsg-anchor-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .dsg-anchor-main b{font-size:12.5px}
