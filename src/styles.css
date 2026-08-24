@@ -1282,8 +1282,10 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .dsg-anchor-main b{font-size:12.5px}
 .dsg-anchor-form{margin-top:9px;display:flex;flex-direction:column;gap:6px}
 .dsg-anchor-form input,.dsg-anchor-form select{width:100%;box-sizing:border-box}
-.dsg-anchor-row{display:flex;gap:6px;align-items:center}
-.dsg-anchor-row input[type=number]{width:70px}
+.dsg-anchor-row{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.dsg-anchor-row input[type=number]{width:52px;flex:0 1 52px;min-width:0;padding:0 4px}
+.dsg-anchor-row .meta{flex:0 0 auto}
+.dsg-anchor-row select{flex:1 1 90px;min-width:0}
 
 /* ===== phase 6: legal hardening ===== */
 .env-rec-code{flex:0 0 140px;width:140px}
