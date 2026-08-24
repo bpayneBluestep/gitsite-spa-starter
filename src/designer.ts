@@ -128,11 +128,11 @@ function dsgView(): string {
 
   const ownerBtns = d.owners.map(o => `
     <button class="dsg-owner ${d.activeOwner === o.id ? 'active' : ''}${d.locked[o.id] ? ' locked' : ''}" style="--oc:${o.color}"
-      onclick="dsgSetOwner('${esc(o.id)}')" title="${d.locked[o.id] ? esc(o.name) + ' has already signed — their fields are locked' : 'New fields are assigned to ' + esc(o.name)}">
+      data-owner="${esc(o.id)}" onclick="dsgSetOwner('${esc(o.id)}')" title="${d.locked[o.id] ? esc(o.name) + ' has already signed — their fields are locked' : 'New fields are assigned to ' + esc(o.name)}">
       <span class="dsg-owner-dot"></span>${esc(o.name)}${d.locked[o.id] ? ' 🔒' : ''}</button>`).join('');
 
   const palette = Object.keys(GEO_TAB_DEFAULTS).map(t => `
-    <button class="dsg-pal ${d.armedType === t ? 'armed' : ''}" onclick="dsgPalClick('${t}')"
+    <button class="dsg-pal ${d.armedType === t ? 'armed' : ''}" data-pal="${t}" onclick="dsgPalClick('${t}')"
       onpointerdown="dsgPalDown(event,'${t}')"
       title="Drag onto the page, or click then click the page">${esc(GEO_TAB_LABELS[t] || t)}</button>`).join('');
 
@@ -178,7 +178,7 @@ function dsgView(): string {
         </div>
       </div>
       <div class="dsg-main">
-        <div class="dsg-toolbar">${zoomBtns}<span class="meta" style="margin-left:auto">${d.tabs.length} field${d.tabs.length === 1 ? '' : 's'}</span></div>
+        <div class="dsg-toolbar">${zoomBtns}<span class="meta" id="dsg-count" style="margin-left:auto">${d.tabs.length} field${d.tabs.length === 1 ? '' : 's'}</span></div>
         <div class="dsg-scroll" id="dsg-scroll">${pages}</div>
       </div>
     </div>
@@ -384,15 +384,25 @@ function dsgSetOwner(id: string): void {
   if (d.locked[id]) { toast('That recipient has already signed — new fields can\'t be assigned to them.'); return; }
   d.activeOwner = id;
   const t = d.tabs.find(x => x.id === d.selected);
-  if (t) { t.recipientId = id; dsgTouched(); }
-  render();
+  if (t) {
+    t.recipientId = id;
+    const el = document.querySelector('[data-tab="' + t.id + '"]') as HTMLElement | null;
+    const o = d.owners.find(x => x.id === id);
+    if (el && o) el.style.setProperty('--oc', o.color);
+    dsgTouched();
+  }
+  dsgUiSync();
+  dsgPropsRefresh();
 }
 
 function dsgArm(type: string): void {
   const d = DSG!;
   d.armedType = d.armedType === type ? '' : type;
   d.selected = '';
-  render();
+  const els = document.querySelectorAll('.dsg-tab.selected');
+  for (let i = 0; i < els.length; i++) els[i].classList.remove('selected');
+  dsgUiSync();
+  dsgPropsRefresh();
 }
 
 // Create a tab of `type` centred on a page-local pixel point. Shared by
@@ -417,7 +427,11 @@ function dsgPlaceAt(docId: string, page: number, pxX: number, pxY: number, type:
   d.selected = tab.id;
   d.armedType = '';
   dsgTouched();
-  render();
+  // Paint only the affected page — a render() here scrolled the user to the top.
+  const pageEl = document.querySelector('.dsg-page[data-doc="' + docId + '"][data-page="' + page + '"]') as HTMLElement | null;
+  if (pageEl) dsgPaintOverlay(pageEl, docId, page);
+  dsgUiSync();
+  dsgPropsRefresh();
 }
 
 function dsgPageClick(ev: MouseEvent, docId: string, page: number): void {
@@ -482,6 +496,19 @@ function dsgPalDown(ev: PointerEvent, type: string): void {
 function dsgPalClick(type: string): void {
   if (DSG_PAL_SUPPRESS_CLICK) { DSG_PAL_SUPPRESS_CLICK = false; return; }
   dsgArm(type);
+}
+
+/* Sync the sidebar chrome WITHOUT render(): a full render rebuilds the scroll
+   pane and re-rasterizes every pdf.js canvas — the designer visibly "reloads"
+   and jumps to the top, losing the user's place mid-work. */
+function dsgUiSync(): void {
+  const d = DSG; if (!d) return;
+  const pals = document.querySelectorAll('.dsg-pal');
+  for (let i = 0; i < pals.length; i++) pals[i].classList.toggle('armed', pals[i].getAttribute('data-pal') === d.armedType);
+  const owners = document.querySelectorAll('.dsg-owner');
+  for (let i = 0; i < owners.length; i++) owners[i].classList.toggle('active', owners[i].getAttribute('data-owner') === d.activeOwner);
+  const count = document.getElementById('dsg-count');
+  if (count) count.textContent = d.tabs.length + ' field' + (d.tabs.length === 1 ? '' : 's');
 }
 
 function dsgPropsRefresh(): void {
