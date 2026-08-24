@@ -24,6 +24,7 @@ const SETTINGS_PANELS: SettingsPanel[] = [
   { key: 'files', label: 'Files', icon: 'file', render: () => filesSettingsPanel() },
   { key: 'applications', label: 'Applications', icon: 'file', render: () => applicationsSettingsPanel() },
   { key: 'agreements', label: 'Agreements', icon: 'fileText', href: '#/agreementbuilder', render: () => '' },
+  { key: 'esign', label: 'E-Signature', icon: 'pen', render: () => esignSettingsPanel() },
   { key: 'email', label: 'Email Integration', icon: 'msg', render: () => emailConfigPanel() },
   { key: 'email-templates', label: 'Email Templates', icon: 'send', render: () => emailTemplatesPanel() },
   // BlueIQ seat management — only visible to BlueIQ admins (or global supers).
@@ -671,4 +672,31 @@ async function biqRemove(userId: string): Promise<void> {
   } catch (e: any) {
     toast('Could not remove: ' + (e && e.message ? e.message : String(e)));
   }
+}
+
+/* ---- E-Signature: the ESIGN consumer disclosure (phase 6) ----
+   Envelopes FREEZE this text at send, so edits here never change what an
+   in-flight signer already saw. Saving non-empty text bumps the version. */
+function esignSettingsPanel(): string {
+  const d = ((SETTINGS as any).esign && (SETTINGS as any).esign.disclosure) || null;
+  return `<div class="section-head"><div><h3>E-Signature</h3>
+      <p>The electronic-records disclosure every signer must accept before signing (ESIGN Act consumer consent). Have counsel review it.</p></div></div>
+    <div class="card card-pad">
+      <div class="field"><label>Disclosure text ${d && d.version ? '· version ' + esc(String(d.version)) : '· using the built-in default'}</label>
+        <textarea id="esign-disc" rows="14">${esc(d && d.text ? d.text : '')}</textarea></div>
+      <p class="meta">Leave empty to use the built-in default. Saving new text bumps the version; each signer's accepted version is recorded on the envelope's audit trail.</p>
+      <button class="btn primary" onclick="esignDiscSave()">Save disclosure</button>
+    </div>`;
+}
+async function esignDiscSave(): Promise<void> {
+  const ta = document.getElementById('esign-disc') as HTMLTextAreaElement | null;
+  const text = ta ? ta.value.trim() : '';
+  const cur = ((SETTINGS as any).esign && (SETTINGS as any).esign.disclosure) || {};
+  const version = text ? String((Number(cur.version) || 0) + 1) : '';
+  try {
+    const merged = await saveSettingsSection('esign', { disclosure: text ? { version: version, text: text, updatedAt: new Date().toISOString() } : null });
+    SETTINGS = merged;
+    toast(text ? 'Disclosure saved as version ' + version + '.' : 'Disclosure cleared — the built-in default applies.');
+    render();
+  } catch (e: any) { toast('Save failed: ' + (e && e.message ? e.message : String(e))); }
 }

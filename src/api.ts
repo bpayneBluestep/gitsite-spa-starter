@@ -372,6 +372,9 @@ function apiSendEnvelope(clientId: string, entryId: string, opts?: { routing?: s
 function apiResendEnvelope(clientId: string, entryId: string, recipientId: string): Promise<any> {
   return maestroPost('resendEnvelope', { id: clientId, entryId: entryId, recipientId: recipientId, entity: agrEntity(clientId) });
 }
+function apiVerifyEnvelope(clientId: string, entryId: string): Promise<any> {
+  return maestroPost('verifyEnvelope', { id: clientId, entryId: entryId, entity: agrEntity(clientId) });
+}
 function apiSignEnvelope(clientId: string, entryId: string, recipientId: string, signatureData: string, typedName: string, tabValues: Record<string, any>): Promise<any> {
   return maestroPost('signEnvelope', { id: clientId, entryId: entryId, recipientId: recipientId, signatureData: signatureData, typedName: typedName, tabValues: tabValues, entity: agrEntity(clientId) });
 }

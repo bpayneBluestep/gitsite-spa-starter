@@ -1280,3 +1280,13 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 .dsg-anchor-form input,.dsg-anchor-form select{width:100%;box-sizing:border-box}
 .dsg-anchor-row{display:flex;gap:6px;align-items:center}
 .dsg-anchor-row input[type=number]{width:70px}
+
+/* ===== phase 6: legal hardening ===== */
+.env-rec-code{width:150px}
+.env-disc{margin:10px 0 4px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px}
+.env-disc summary{cursor:pointer;color:var(--muted-foreground)}
+.env-disc-text{white-space:pre-wrap;font:12px/1.5 inherit;max-height:180px;overflow:auto;margin:8px 0 2px}
+.env-verify-line{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13.5px;line-height:1.45}
+.env-verify-line.good{background:color-mix(in srgb,#1a7f37 10%,var(--card));color:#1a7f37}
+.env-verify-line.bad{background:color-mix(in srgb,#b3261e 10%,var(--card));color:#b3261e}
+.env-verify-line code{font-size:12px}

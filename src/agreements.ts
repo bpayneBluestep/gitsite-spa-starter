@@ -26,6 +26,7 @@ interface EnvRecipient {
   routingOrder: number; status: string; signedAt: string;
   typedName: string; signatureData: string; tabValues: Record<string, any>; hasToken: boolean;
   notifiedAt?: string; viewedAt?: string; declinedAt?: string; declineReason?: string;
+  accessCode?: string; disclosureVersion?: string; disclosureAcceptedAt?: string;
 }
 interface Envelope {
   entryId: string; schemaVersion: number; title: string; status: string;
@@ -34,6 +35,7 @@ interface Envelope {
   recipients: EnvRecipient[]; audit: any[];
   routing?: string; expiresAt?: string; expireDays?: number; remindEveryDays?: number;
   activeOrder?: number; senderName?: string; senderValues?: Record<string, any>;
+  disclosure?: { version: string; text: string } | null;
 }
 
 interface EnvState { list: any[] | null; loading: boolean; error: string | null; }
@@ -323,6 +325,7 @@ function envDetail(c: Client, env: Envelope): string {
         ${ENV_KINDS.map(k => `<option value="${k.v}"${r.kind === k.v ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}
       </select>
       <input class="env-rec-order" type="number" min="1" value="${r.routingOrder}" title="Signing order" onchange="envRecChange(${i},'routingOrder',this.value)">
+      ${r.kind === 'external' ? `<input class="env-rec-code" value="${esc(r.accessCode || '')}" placeholder="Access code (optional)" title="They must enter this code to open their link — share it out-of-band" oninput="envRecChange(${i},'accessCode',this.value)">` : ''}
       <button class="ico-mini danger" title="Remove" onclick="envRecRemove(${i})">${ic('trash', 14)}</button>
     </div>` : envRecRoRow(c.id, env, r)).join('');
 
@@ -340,6 +343,7 @@ function envDetail(c: Client, env: Envelope): string {
         ${inflight && !ENV_CORRECT ? `<button class="btn outline" onclick="envCorrectStart()" title="Edit recipients or move fields on this sent envelope">${ic('edit', 15)} Correct</button>` : ''}
         ${ENV_CORRECT ? `<button class="btn primary" onclick="envCorrectDone('${esc(c.id)}','${esc(env.entryId)}')">Done correcting</button>` : ''}
         ${env.status === 'Completed' && env.signedPdf ? `<button class="btn primary" onclick="filesOpen('${esc(env.signedPdf)}')">${ic('download', 15)} Signed PDF</button>` : ''}
+        ${env.status !== 'Draft' ? `<button class="btn ghost" onclick="envVerify('${esc(c.id)}','${esc(env.entryId)}')" title="Recompute the audit hash chain and completion hash">${ic('check', 14)} Verify</button>` : ''}
         ${env.status !== 'Completed' && env.status !== 'Voided' ? `<button class="btn ghost" onclick="envVoid('${esc(c.id)}','${esc(env.entryId)}',false)">${ic('trash', 14)} Void</button>` : ''}
       </div></div>
     ${ENV_CORRECT ? `<div class="env-correct-note">${ic('edit', 14)} Correcting a sent envelope — recipients who already signed are locked, and their placed fields can't move. Pending signers see the updated envelope on their existing link.</div>` : ''}
@@ -596,6 +600,28 @@ async function envResend(cid: string, entryId: string, recipientId: string): Pro
   } catch (e: any) { toast('Resend failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
+/* Verify integrity (phase 6): recompute the audit chain + completion hash. */
+async function envVerify(cid: string, entryId: string): Promise<void> {
+  try {
+    const v = await apiVerifyEnvelope(cid, entryId);
+    const host = document.createElement('div');
+    host.className = 'modal-overlay'; host.id = '__envVerify';
+    host.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
+      <div class="modal-head"><div><b>Integrity check</b><p>Audit hash chain + completion record hash.</p></div>
+        <button class="ico-x" onclick="document.getElementById('__envVerify').remove()">${ic('x', 18)}</button></div>
+      <div class="modal-body">
+        <div class="env-verify-line ${v.firstBreak ? 'bad' : 'good'}">${v.firstBreak
+          ? `${ic('x', 15)} <b>Audit chain BROKEN</b> at event #${v.firstBreak.index + 1} (“${esc(v.firstBreak.event)}”, ${esc(fmtDate(v.firstBreak.at) || v.firstBreak.at || '')}): ${esc(v.firstBreak.reason)}`
+          : `${ic('check', 15)} Audit chain intact — ${v.chained} chained event${v.chained === 1 ? '' : 's'} verified${v.unchainedLegacy ? ' (' + v.unchainedLegacy + ' pre-chain event' + (v.unchainedLegacy === 1 ? '' : 's') + ' skipped)' : ''}.`}</div>
+        ${v.documentHash && v.documentHash.stored ? `<div class="env-verify-line ${v.documentHash.match === false ? 'bad' : 'good'}">${v.documentHash.match === false
+          ? `${ic('x', 15)} <b>Completion hash MISMATCH</b> — the signing record changed after completion.`
+          : `${ic('check', 15)} Completion record hash matches: <code>${esc(String(v.documentHash.stored).slice(0, 32))}…</code>`}</div>`
+        : '<div class="env-verify-line meta">No completion hash yet (envelope not completed).</div>'}
+      </div></div>`;
+    document.body.appendChild(host);
+  } catch (e: any) { toast('Verify failed: ' + (e && e.message ? e.message : String(e))); }
+}
+
 /* Correction mode (phase 4): edit recipients / move fields on a Sent envelope. */
 function envCorrectStart(): void { ENV_CORRECT = true; render(); }
 async function envCorrectDone(cid: string, entryId: string): Promise<void> {
@@ -645,8 +671,10 @@ function envSignNow(cid: string, entryId: string, recipientId?: string): void {
     <div class="modal-head"><div><b>${esc(env.title)}</b><p>Complete your fields, then Finish.</p></div>
       <button class="ico-x" onclick="envSignClose()">${ic('x', 18)}</button></div>
     <div class="modal-body"><div id="sv-host"></div>
+      ${env.disclosure && env.disclosure.text ? `<details class="env-disc"><summary>Electronic records &amp; signatures disclosure (version ${esc(env.disclosure.version)})</summary>
+        <pre class="env-disc-text">${esc(env.disclosure.text)}</pre></details>` : ''}
       <label class="sg-consent"><input type="checkbox" id="env-consent" onchange="svUpdateProgress()">
-        I adopt this signature and agree it is legally binding.</label></div>
+        I have read the disclosure above, adopt this signature, and agree it is legally binding.</label></div>
   </div>`;
   document.body.appendChild(host);
   svMount({
