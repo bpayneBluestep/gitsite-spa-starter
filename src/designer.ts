@@ -176,23 +176,25 @@ function dsgView(): string {
           <div class="agb-side-h">Fields</div>
           <div class="dsg-palette">${palette}</div>
         </div>
-        <div class="card card-pad" id="dsg-props">${dsgPropsHtml()}</div>
       </div>
       <div class="dsg-main">
         <div class="dsg-toolbar">${zoomBtns}<span class="meta" style="margin-left:auto">${d.tabs.length} field${d.tabs.length === 1 ? '' : 's'}</span></div>
         <div class="dsg-scroll" id="dsg-scroll">${pages}</div>
       </div>
-    </div>`;
+    </div>
+    <div id="dsg-props" class="dsg-props-float${d.selected ? '' : ' dsg-hidden'}">${dsgPropsHtml()}</div>`;
 }
 
 /* Properties panel for the selected tab. */
 function dsgPropsHtml(): string {
   const d = DSG!;
   const t = d.tabs.find(x => x.id === d.selected);
-  if (!t) return `<div class="agb-side-h">Selected field</div><p class="meta">Click a placed field to edit it.</p>`;
+  if (!t) return '';
+  const head = `<div class="dsg-props-head"><div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
+    <button class="ico-mini" title="Close (Esc)" onclick="dsgDeselect()">${ic('x', 14)}</button></div>`;
   if (d.locked[t.recipientId]) {
     const lockedOwner = d.owners.find(o => o.id === t.recipientId);
-    return `<div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
+    return `${head}
       <p class="meta">${esc(lockedOwner ? lockedOwner.name : 'This recipient')} has already signed — this field can't be changed by a correction.</p>`;
   }
   const owner = d.owners.filter(o => !d.locked[o.id]).map(o => `<option value="${esc(o.id)}"${t.recipientId === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
@@ -205,7 +207,7 @@ function dsgPropsHtml(): string {
     </select></div>` : '';
   const needsOpts = t.type === 'radioGroup' || t.type === 'dropdown';
   const auto = t.type === 'dateSigned' || t.type === 'name';
-  return `<div class="agb-side-h">${esc(GEO_TAB_LABELS[t.type] || t.type)}</div>
+  return `${head}
     <div class="field"><label>Assigned to</label><select onchange="dsgProp('recipientId',this.value)">${owner}</select></div>
     ${prefill}
     ${auto ? `<p class="meta">Filled automatically when they sign.</p>` : `
@@ -296,8 +298,7 @@ function dsgRepaintAll(): void {
     const el = pageEls[i] as HTMLElement;
     dsgPaintOverlay(el, el.getAttribute('data-doc') || '', Number(el.getAttribute('data-page')) || 1);
   }
-  const props = document.getElementById('dsg-props');
-  if (props) props.innerHTML = dsgPropsHtml();
+  dsgPropsRefresh();
 }
 
 /* ---- drag + resize, hand-rolled on pointer events ----
@@ -482,6 +483,22 @@ function dsgPalClick(type: string): void {
   dsgArm(type);
 }
 
+function dsgPropsRefresh(): void {
+  const d = DSG;
+  const props = document.getElementById('dsg-props');
+  if (!props || !d) return;
+  props.innerHTML = dsgPropsHtml();
+  // The editor is a FLOATING panel (top-right, always on screen) — the old
+  // sidebar placement buried it under the fold, so selecting a field looked
+  // like it did nothing. Visible exactly while something is selected.
+  props.classList.toggle('dsg-hidden', !d.selected);
+}
+function dsgDeselect(): void {
+  const d = DSG!; d.selected = '';
+  const els = document.querySelectorAll('.dsg-tab.selected');
+  for (let i = 0; i < els.length; i++) els[i].classList.remove('selected');
+  dsgPropsRefresh();
+}
 function dsgSelect(id: string): void {
   const d = DSG!; d.selected = id; d.armedType = '';
   // IN PLACE, never a repaint: this runs on mousedown, and rebuilding the overlay
@@ -491,8 +508,7 @@ function dsgSelect(id: string): void {
   for (let i = 0; i < els.length; i++) els[i].classList.remove('selected');
   const el = document.querySelector('[data-tab="' + id + '"]');
   if (el) el.classList.add('selected');
-  const props = document.getElementById('dsg-props');
-  if (props) props.innerHTML = dsgPropsHtml();
+  dsgPropsRefresh();
 }
 
 function dsgProp(key: string, val: any): void {
