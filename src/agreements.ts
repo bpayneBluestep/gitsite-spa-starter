@@ -1205,7 +1205,7 @@ function viewEnvSign(parts: string[]): string {
       <p><button class="btn outline" onclick="envSignBack()">Back to envelope</button></p></div>`;
   }
   setTimeout(envSignMount, 0);
-  return `<div class="env-signpage">
+  return `<div class="env-signpage"><div class="env-signpage-inner">
     <div class="env-signpage-head">
       <button class="btn ghost sm" onclick="envSignBack()">${ic('chevL', 14)} Back</button>
       <div class="env-signpage-title"><b>${esc(env.title)}</b><span class="meta">Signing as ${esc(me.name)}${me.role ? ' — ' + esc(me.role) : ''}</span></div>
@@ -1213,7 +1213,7 @@ function viewEnvSign(parts: string[]): string {
     ${env.disclosure && env.disclosure.text ? `<details class="env-disc"><summary>Electronic records &amp; signatures disclosure (version ${esc(env.disclosure.version)})</summary>
       <pre class="env-disc-text">${esc(env.disclosure.text)}</pre></details>` : ''}
     <div id="sv-host"></div>
-  </div>`;
+  </div></div>`;
 }
 
 function envSignBack(): void {
