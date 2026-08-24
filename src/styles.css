@@ -1300,3 +1300,5 @@ a.rf-client:hover{color:var(--primary);text-decoration:underline}
 
 /* recipient picker (fill from contacts) */
 .env-rec-pick{flex:0 0 118px;max-width:118px;color:var(--muted-foreground)}
+
+.env-slot-opt{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted-foreground);font-size:11px}

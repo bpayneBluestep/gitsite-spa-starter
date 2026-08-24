@@ -152,14 +152,16 @@ async function envNewBlank(cid: string): Promise<void> {
 let ENV_TPLS: any[] = [];
 function envTplClose(): void { const m = document.getElementById('__envTpl'); if (m) m.remove(); }
 
-/* Role slots of a template: a 2-holder role expands to roleId and roleId~2 —
-   each slot maps to one real person in the apply form. '__sender__' is never a slot. */
-function envTplSlots(body: any): { id: string; label: string }[] {
-  const out: { id: string; label: string }[] = [];
+/* One apply-form slot per template role. Optional roles may be left blank —
+   that person and every field assigned to them are omitted from the envelope
+   (tabs and anchor rules whose slot has no recipient are dropped by the mapping
+   already). Legacy holders:2 templates still expand into two slots, read-only. */
+function envTplSlots(body: any): { id: string; label: string; optional: boolean }[] {
+  const out: { id: string; label: string; optional: boolean }[] = [];
   for (const r of (body.roles || [])) {
     const base = r.name || 'Signer';
-    out.push({ id: r.id, label: r.holders === 2 ? base + ' (1)' : base });
-    if (r.holders === 2) out.push({ id: r.id + '~2', label: base + ' (2)' });
+    out.push({ id: r.id, label: r.holders === 2 ? base + ' (1)' : base, optional: !!r.optional });
+    if (r.holders === 2) out.push({ id: r.id + '~2', label: base + ' (2)', optional: !!r.optional });
   }
   return out;
 }
@@ -179,7 +181,7 @@ async function envTplPick(cid: string, tplEntryId: string): Promise<void> {
     <div class="modal-body">
       <div class="field"><label>Envelope title</label><input id="env-tpl-title" value="${esc(t.name)}"></div>
       ${slots.map((sl, i) => `<div class="env-tpl-slot">
-        <div class="env-tpl-slot-h">${esc(sl.label)}</div>
+        <div class="env-tpl-slot-h">${esc(sl.label)}${sl.optional ? ' <span class="env-slot-opt">optional — leave blank to skip</span>' : ''}</div>
         <div class="env-rec">
           ${envPickSelect(`envSlotPick(${i},this.value)`)}
           <input class="env-rec-name" id="env-slot-name-${i}" placeholder="Full name">
@@ -213,13 +215,18 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
     kind: (document.getElementById('env-slot-kind-' + i) as HTMLSelectElement | null)?.value || 'external',
     routingOrder: Math.max(1, Number(g('env-slot-order-' + i)?.value) || 1),
   }));
-  for (const r of recipients) { if (!r.name) { toast('Every role needs a name.'); return; } }
+  // Optional roles may be skipped: a blank name omits that person and their fields.
+  for (let i = 0; i < recipients.length; i++) {
+    if (!recipients[i].name && !slots[i].optional) { toast('"' + slots[i].label + '" needs a name (or mark the role optional in the template).'); return; }
+  }
+  const skipped = recipients.filter((r, i) => !r.name && slots[i].optional).length;
+  const filled = recipients.filter(r => !!r.name);
   const btn = document.getElementById('env-tpl-create') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
     envTplStatus('Creating envelope…');
     let env = await apiCreateEnvelope(cid, title);
-    env = await apiSetEnvelopeRecipients(cid, env.entryId, recipients, title);
+    env = await apiSetEnvelopeRecipients(cid, env.entryId, filled, title);
     // slot id → real recipient id (setEnvelopeRecipients preserves `role`)
     const slotToRid: { [slot: string]: string } = {};
     for (const r of env.recipients) if (r.role) slotToRid[r.role] = r.id;
@@ -255,7 +262,8 @@ async function envTplCreate(cid: string, tplEntryId: string): Promise<void> {
     envTplClose();
     ENV_OPEN = env; ENV_OPEN_CID = cid;
     await loadEnvelopes(cid, true);
-    toast('Envelope created from template — ' + allTabs.length + ' fields placed.');
+    toast('Envelope created from template — ' + allTabs.length + ' fields placed'
+      + (skipped ? ' (' + skipped + ' optional role' + (skipped === 1 ? '' : 's') + ' skipped)' : '') + '.');
     render();
   } catch (e: any) {
     envTplStatus('');

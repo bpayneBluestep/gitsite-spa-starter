@@ -169,8 +169,8 @@ function dsgView(): string {
           <div class="agb-side-h">${d.mode === 'env' ? 'Recipients' : 'Roles'}</div>
           <div class="dsg-owners">${ownerBtns}</div>
           ${d.mode === 'tpl' ? `<button class="btn ghost sm" onclick="dsgAddRole()">${ic('plus', 13)} Add role</button>
-          <div class="dsg-holders">${d.roles.map(r => `<label class="dsg-holders-row"><input type="checkbox" ${r.holders === 2 ? 'checked' : ''}
-            onchange="dsgToggleHolders('${esc(r.id)}')"> ${esc(r.name)}: two signers share this role</label>`).join('')}</div>` : ''}
+          <div class="dsg-holders">${d.roles.map(r => `<label class="dsg-holders-row" title="An optional role may be left blank when this template is applied — that person and all their fields are omitted from the envelope.">
+            <input type="checkbox" ${r.optional ? 'checked' : ''} onchange="dsgToggleOptional('${esc(r.id)}')"> ${esc(r.name)} is optional</label>`).join('')}</div>` : ''}
         </div>
         ${d.mode === 'tpl' ? dsgAnchorsCard() : ''}
         <div class="card card-pad">
@@ -576,42 +576,29 @@ function dsgAddRole(): void {
   const name = prompt('Role name (e.g. "Parent / Guardian"):', 'Signer ' + (d.roles.length + 1));
   if (name == null) return;
   const id = 'role' + (d.roles.length + 1) + '_' + Math.random().toString(36).slice(2, 6);
-  d.roles.push({ id: id, name: name.trim() || ('Signer ' + (d.roles.length + 1)), holders: 1 });
+  d.roles.push({ id: id, name: name.trim() || ('Signer ' + (d.roles.length + 1)) });
   dsgRebuildOwners();
   d.activeOwner = id;
   dsgTouched();
   render();
 }
 
-/* Roles → designer owner SLOTS. A 2-holder role ("Sponsor(s)") becomes two slots —
-   roleId (holder 1) and roleId~2 (holder 2) — so each holder's fields are placed
-   and signed independently; apply maps each slot to a real person. */
+/* One designer owner slot per role. (The old "two signers share this role"
+   expansion is gone — two co-signers are simply two roles, which is what users
+   expect. Roles can instead be OPTIONAL: skippable when the template is applied.) */
 function dsgOwnersFromRoles(roles: any[]): DsgOwner[] {
-  const out: DsgOwner[] = [];
-  roles.forEach((r: any) => {
-    const base = r.name || r.label || 'Role';
-    out.push({ id: r.id, name: r.holders === 2 ? base + ' (1)' : base, color: geoRecipientColor(out.length) });
-    if (r.holders === 2) out.push({ id: r.id + '~2', name: base + ' (2)', color: geoRecipientColor(out.length) });
-  });
-  return out;
+  return roles.map((r: any, i: number) => ({ id: r.id, name: (r.name || r.label || 'Role') + (r.optional ? ' (optional)' : ''), color: geoRecipientColor(i) }));
 }
 function dsgRebuildOwners(): void {
   const d = DSG!;
   d.owners = dsgOwnersFromRoles(d.roles);
   d.owners.push({ id: '__sender__', name: 'Sender (at send)', color: '#64748b' });
 }
-function dsgToggleHolders(roleId: string): void {
+function dsgToggleOptional(roleId: string): void {
   const d = DSG!;
   const r = d.roles.find((x: any) => x.id === roleId);
   if (!r) return;
-  const to2 = r.holders !== 2;
-  if (!to2) {
-    // collapsing 2 → 1 reassigns the second holder's tabs (and anchor rules) to holder 1
-    for (const t of d.tabs) if (t.recipientId === roleId + '~2') t.recipientId = roleId;
-    for (const a of d.anchors) if (a.roleSlot === roleId + '~2') a.roleSlot = roleId;
-    if (d.activeOwner === roleId + '~2') d.activeOwner = roleId;
-  }
-  r.holders = to2 ? 2 : 1;
+  r.optional = !r.optional;
   dsgRebuildOwners();
   dsgTouched();
   render();
@@ -731,7 +718,7 @@ async function dsgFlushSave(): Promise<void> {
   const st = document.querySelector('.dsg-savestate'); if (st) st.textContent = 'Saving…';
   try {
     if (d.mode === 'env') await apiSaveEnvelopeTabs(d.cid, d.entryId, d.tabs);
-    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.roles.map((r: any) => ({ id: r.id, name: r.name, holders: r.holders === 2 ? 2 : 1 })), d.anchors);
+    else await apiSaveTemplateDesign(d.entryId, d.tabs, d.roles.map((r: any) => ({ id: r.id, name: r.name, optional: !!r.optional })), d.anchors);
     d.dirty = false;
     if (st) st.textContent = 'Saved';
   } catch (e: any) {
