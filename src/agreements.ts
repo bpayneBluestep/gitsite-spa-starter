@@ -670,7 +670,7 @@ function envDetail(c: Client, env: Envelope): string {
         ${ENV_KINDS.map(k => `<option value="${k.v}"${r.kind === k.v ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}
       </select>
       <input class="env-rec-order" type="number" min="1" value="${r.routingOrder}" title="Signing order" onchange="envRecChange(${i},'routingOrder',this.value)">
-      ${r.kind === 'external' ? `<input class="env-rec-code" value="${esc(r.accessCode || '')}" placeholder="Access code (optional)" title="They must enter this code to open their link — share it out-of-band" oninput="envRecChange(${i},'accessCode',this.value)">` : ''}
+      ${r.kind === 'external' ? `<input class="env-rec-code" value="${esc(r.accessCode || '')}" placeholder="6-digit code" maxlength="6" inputmode="numeric" title="Required — they must enter this 6-digit code to open their link. Share it out-of-band; it is never emailed." oninput="envRecChange(${i},'accessCode',this.value)"><button class="ico-mini" title="Generate a new access code" onclick="envRecRegen(${i})">&#8635;</button>` : ''}
       <button class="ico-mini danger" title="Remove" onclick="envRecRemove(${i})">${ic('trash', 14)}</button>
     </div>` : envRecRoRow(c.id, env, r)).join('');
 
@@ -793,7 +793,13 @@ async function envMoveDoc(docId: string, dir: number): Promise<void> {
    envSaveRecipients — one server write per meaningful edit, not per keypress. */
 function envRecChange(i: number, key: string, val: string): void {
   if (!ENV_OPEN || !ENV_OPEN.recipients[i]) return;
-  (ENV_OPEN.recipients[i] as any)[key] = key === 'routingOrder' ? Math.max(1, Number(val) || 1) : val;
+  const r = ENV_OPEN.recipients[i] as any;
+  r[key] = key === 'routingOrder' ? Math.max(1, Number(val) || 1) : val;
+  if (key === 'kind' && val === 'external' && !r.accessCode) {
+    r.accessCode = genAccessCode(); // required for email-link signers
+    envSaveRecipients().then(() => render());
+    return;
+  }
   if (key === 'kind' || key === 'routingOrder') envSaveRecipients();
   else envSaveRecipientsDebounced();
 }
@@ -814,6 +820,13 @@ async function envSaveRecipients(): Promise<void> {
   } catch (e: any) { toast('Save failed: ' + (e && e.message ? e.message : String(e))); }
 }
 
+/* Access codes are REQUIRED for email-link (external) recipients: a fresh
+   6-digit code is generated the moment one appears, and the server refuses to
+   persist a blank one. 100000-999999 so no leading zero ever gets mangled. */
+function genAccessCode(): string {
+  return String(100000 + Math.floor(Math.random() * 900000));
+}
+
 function envRecAdd(): void {
   if (!ENV_OPEN) return;
   const maxOrder = ENV_OPEN.recipients.reduce((m, r) => Math.max(m, r.routingOrder || 1), 0);
@@ -821,8 +834,15 @@ function envRecAdd(): void {
     id: '', role: '', name: '', email: '', kind: 'external',
     routingOrder: maxOrder + 1, status: 'pending', signedAt: '',
     typedName: '', signatureData: '', tabValues: {}, hasToken: false,
+    accessCode: genAccessCode(),
   });
   render();
+}
+
+function envRecRegen(i: number): void {
+  if (!ENV_OPEN || !ENV_OPEN.recipients[i]) return;
+  (ENV_OPEN.recipients[i] as any).accessCode = genAccessCode();
+  envSaveRecipients().then(() => render());
 }
 
 async function envRecRemove(i: number): Promise<void> {
@@ -894,6 +914,13 @@ function envSendConfirm(cid: string, entryId: string): void {
     }
     senderValues[t.id] = v;
   }
+  for (const r of ((env && env.recipients) || [])) {
+    if (r.kind !== 'external' || r.status === 'signed' || r.status === 'declined') continue;
+    if (!/^\d{6}$/.test((r as any).accessCode || '')) {
+      toast((r.name || 'A recipient') + ' needs a 6-digit access code — one is required for every emailed signer.');
+      return;
+    }
+  }
   const opts = {
     routing: seq && seq.checked ? 'sequential' : 'parallel',
     expireDays: exp ? Math.max(0, Number(exp.value) || 0) : 0,
@@ -941,6 +968,7 @@ function envRecPick(i: number, v: string): void {
   if (!o) return;
   const r = ENV_OPEN.recipients[i];
   r.name = o.name; r.email = o.email; (r as any).kind = o.kind;
+  if (o.kind === 'external' && !(r as any).accessCode) (r as any).accessCode = genAccessCode();
   envSaveRecipients().then(() => render());
 }
 function envSlotPick(i: number, v: string): void {
@@ -999,6 +1027,7 @@ async function envSendRenderPages(cid: string): Promise<void> {
     const docId = el.getAttribute('data-doc') || '';
     const pageNum = Number(el.getAttribute('data-page')) || 1;
     const doc = docs.find((d: any) => d.id === docId);
+    if (!doc) continue;
     const canvas = el.querySelector('canvas') as HTMLCanvasElement;
     const pageTabs = tabs.filter((t: any) => t.docId === docId && t.page === pageNum);
     try {
